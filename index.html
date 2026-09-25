@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<title>Mühürlü Defter</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(40)">
+      <line x1="0" y1="0" x2="0" y2="4" stroke="#24160d" stroke-width="1.1"/>
+    </pattern>
+  </defs>
+</svg>
+
+<div id="app">
+  <header id="hud">
+    <div class="hud-time">
+      <b id="hClock">09:00</b>
+      <span id="hDate">3 Mayıs · Pazartesi</span>
+    </div>
+    <div class="hud-cash" id="hudCash">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#c49a45" stroke="#24160d" stroke-width="1.6"/><circle cx="12" cy="12" r="6" fill="none" stroke="#7a5a22" stroke-width="1"/><text x="12" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="#4a3210">L</text></svg>
+      <b id="hCash">0</b>
+    </div>
+    <div class="hud-heat" id="hudHeat" title="Polis dikkati">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,2 L14.6,8.6 L21.5,9 L16.2,13.3 L17.9,20 L12,16.2 L6.1,20 L7.8,13.3 L2.5,9 L9.4,8.6Z" fill="#8aa0c8" stroke="#24160d" stroke-width="1.4"/></svg>
+      <div class="heat-bar"><i id="hHeat"></i></div>
+      <span id="hHeatN">0</span>
+    </div>
+    <div class="hud-debt" id="hudDebt" title="Nuri Efendi'nin taksiti">
+      <span class="lbl">Taksit</span>
+      <div id="hDebt"></div>
+    </div>
+  </header>
+
+  <main id="stage">
+    <svg id="scene" viewBox="0 0 440 440" preserveAspectRatio="xMidYMax slice"></svg>
+    <div id="speech" class="speech" hidden>
+      <div class="sp-tag"><span id="spName"></span><small id="spRole"></small><span id="spPat" class="pat"></span></div>
+      <p id="spText"></p>
+    </div>
+    <div id="fx"></div>
+  </main>
+
+  <section id="panel" class="panel"></section>
+
+  <nav id="dock">
+    <button data-open="depo"><svg viewBox="0 0 24 24"><path d="M3,8 L12,3 L21,8 V20 H3Z M3,8 H21 M9,20 V13 H15 V20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Depo</span></button>
+    <button data-open="ekip"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16.5" cy="9" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.5,20 C3,15 13,15 13.5,20 M13,15 C16,13.5 21,14.5 21.5,19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Ekip</span></button>
+    <button data-open="defter"><svg viewBox="0 0 24 24"><path d="M5,3 H18 A1,1 0 0 1 19,4 V21 H6 A2,2 0 0 1 4,19 V4 A1,1 0 0 1 5,3Z M4,18 A2,2 0 0 1 6,16 H19 M8,7 H15 M8,10 H13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="15" cy="12.5" r="2" fill="#8e2a22"/></svg><span>Defter</span></button>
+  </nav>
+</div>
+
+<div id="town" hidden>
+  <div class="town-top">
+    <b id="tDay">1. gece</b>
+    <span class="t-stat"><i class="coin"></i><b id="tCash">0</b> L</span>
+    <span class="t-stat heat">Dikkat <b id="tHeat">0</b></span>
+  </div>
+  <svg id="townMap" viewBox="0 0 440 820" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="town-bottom">
+    <p class="town-hint">İğnelere dokun: işlere adam ata, meyhanede ekip bul. Bitince dükkâna dön.</p>
+    <div id="tCrew" class="chips"></div>
+  </div>
+</div>
+
+<div id="sheet" hidden></div>
+
+<div id="title">
+  <svg id="titleScene" viewBox="0 0 440 600" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <defs>
+      <radialGradient id="tLamp" cx=".5" cy=".3" r=".7"><stop offset="0" stop-color="#ffcf7a" stop-opacity=".55"/><stop offset=".5" stop-color="#b9772e" stop-opacity=".15"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+      <linearGradient id="tDesk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a371f"/><stop offset="1" stop-color="#24140a"/></linearGradient>
+    </defs>
+    <rect width="440" height="600" fill="#1a110b"/>
+    <g opacity=".55">
+      <rect x="10" y="150" width="120" height="300" fill="#24160d" stroke="#0e0906"/>
+      <rect x="310" y="150" width="120" height="300" fill="#24160d" stroke="#0e0906"/>
+      <path d="M10,210 H130 M10,270 H130 M10,330 H130 M10,390 H130 M310,210 H430 M310,270 H430 M310,330 H430 M310,390 H430" stroke="#3a2416" stroke-width="5"/>
+      <path d="M22,208 V180 H30 V208 M36,208 V186 H42 V208 M50,208 C50,190 64,190 64,208 M80,268 V238 H90 V268 M96,268 V244 H104 V268 M322,208 C322,186 344,186 344,208 M360,208 V182 H368 V208 M330,268 V240 H340 V268 M350,268 V246 H358 V268 M380,268 C380,248 400,248 400,268 M30,328 C30,306 54,306 54,328 M340,328 V300 H352 V328" fill="#3a2a1c" stroke="#0e0906"/>
+    </g>
+    <circle cx="220" cy="210" r="330" fill="url(#tLamp)"/>
+    <g id="titleActor"></g>
+    <path d="M-10,430 H450 V600 H-10Z" fill="url(#tDesk)"/>
+    <path d="M-10,430 H450" stroke="#c49a45" stroke-width="3"/>
+    <path d="M120,470 L136,432 L220,428 L218,466Z" fill="#e9dab4" stroke="#24160d" stroke-width="2"/>
+    <path d="M218,466 L220,428 L304,432 L322,470Z" fill="#efe2bf" stroke="#24160d" stroke-width="2"/>
+    <path d="M142,442 L212,439 M140,448 L212,445 M138,454 L212,451 M228,439 L298,442 M228,445 L302,448 M228,451 L306,454" stroke="#8a6a4a" stroke-width="1"/>
+    <circle cx="270" cy="458" r="9" fill="#8e2a22" stroke="#24160d" stroke-width="1.5"/>
+    <path d="M110,476 L220,470 L334,476" fill="none" stroke="#3a1a0e" stroke-width="5"/>
+    <path d="M60,440 L64,420 H80 L84,440Z" fill="#1c2230" stroke="#000"/>
+    <path d="M360,436 C370,418 386,414 396,418 L398,436Z" fill="#6b4524" stroke="#000"/>
+  </svg>
+  <div class="title-logo">
+    <div class="t-kicker">Galata · 1926</div>
+    <h1><span>Mühürlü</span><span>Defter</span></h1>
+    <p class="t-tag">Ucuza al. Pahalıya sat. Kimle iş tuttuğunu bil.</p>
+  </div>
+  <div class="title-actions">
+    <button id="btnCont" class="btn primary" hidden>Devam et</button>
+    <button id="btnNew" class="btn">Yeni oyun</button>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/art.js"></script>
+<script src="js/people.js"></script>
+<script src="js/shop.js"></script>
+<script src="js/town.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,1126 @@
+/* Oyun akışı: gün döngüsü, alım-satım ve pazarlık, kâr/zarar defteri, gece işleri, kayıt */
+(function () {
+  const { rnd, ri, pick, wpick, clamp, round5, sleep, money, fmt, hhmm } = MD.U;
+  const D = MD.D;
+  const $ = s => document.querySelector(s);
+  const OPEN = 540, CLOSE = 1080;
+  const DUE = [{ day: 7, amt: 1000 }, { day: 14, amt: 1750 }, { day: 21, amt: 2500 }];
+  const DAYN = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+  const MON = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const SAVE_KEY = 'md_save_v1';
+  let G = null;
+  let closeEarly = false;
+  let running = false;
+
+  /* ---------- kayıt ---------- */
+  function save() {
+    if (!G) return;
+    const s = JSON.stringify(G);
+    try { localStorage.setItem(SAVE_KEY, s); } catch (e) { }
+    try { window.webkit.messageHandlers.save.postMessage(s); } catch (e) { }
+  }
+  function load() {
+    let s = null;
+    try { s = window.__MD_SAVE__ || localStorage.getItem(SAVE_KEY); } catch (e) { }
+    if (!s) return null;
+    try { const g = JSON.parse(s); return g && g.v === 1 && !g.over ? g : null; } catch (e) { return null; }
+  }
+  function clearSave() {
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) { }
+    try { window.webkit.messageHandlers.save.postMessage(''); } catch (e) { }
+    window.__MD_SAVE__ = null;
+  }
+
+  /* ---------- karakter kalıpları ---------- */
+  const NURI = () => MD.People.randSpec({ f: false, old: true, skin: '#e6bd94', hair: '#d2cdc2', hs: 'bald', hat: 'fez', mus: 'handle', gls: 'round', coat: '#2b2b31', vest: true, bow: false, tie: '#6b1f1a', w: 1.1, acc: 'tespih' });
+  const KOMISER = () => MD.People.randSpec({ f: false, old: false, skin: '#d2a278', hair: '#1d130c', hs: 'short', hat: 'kepi', mus: 'thick', gls: 'none', coat: '#23304a', vest: false, tie: '#1a1a22', w: 1.08, acc: 'none' });
+  const MUHBIR = () => MD.People.randSpec({ f: false, old: false, hs: 'short', hat: 'kasket', mus: 'thin', gls: 'none', coat: '#58503f', vest: false, w: 0.94 });
+
+  function newGame() {
+    G = {
+      v: 1, day: 1, time: OPEN, phase: 'day', cash: 300, heat: 5, inv: [], crew: [], paidN: 0,
+      dayLog: [], stats: { bought: 0, sold: 0, spent: 0, earned: 0, profit: 0, jobs: 0, best: 0 },
+      trend: null, tip: false, intro: true, endless: false, komiserToday: false, night: null, over: null,
+    };
+    const s1 = D.makeItem({ cat: 'vase', rar: 0, cond: 2 }); s1.paid = 30; s1.k = { c: true, a: true, p: true };
+    const s2 = D.makeItem({ cat: 'candle', rar: 0, cond: 1 }); s2.paid = 18; s2.k = { c: true, a: true, p: false };
+    const s3 = D.makeItem({ cat: 'watch', rar: 1, cond: 1 }); s3.paid = 70; s3.k = { c: true, a: false, p: false };
+    G.inv.push(s1, s2, s3);
+    G.crew.push(D.makeCrew('kabadayi', { name: 'Topal Hüsnü', kas: 3, sin: 1, akl: 1, wage: 12, hire: 0, spec: MD.People.randSpec({ f: false, old: true, hs: 'short', hat: 'kasket', mus: 'thick', gls: 'none', coat: '#4b3627', vest: false }) }));
+    G.trend = makeTrend();
+    save();
+  }
+  function makeTrend() {
+    const cats = MD.U.shuffle(Object.keys(D.CATS));
+    return { up: cats[0], down: cats[1] };
+  }
+  const hasPerk = r => G.crew.some(c => c.role === r && !c.jail);
+
+  /* ---------- üst çubuk ---------- */
+  function hud() {
+    const d = new Date(1926, 4, 2 + G.day);
+    $('#hDate').textContent = `${d.getDate()} ${MON[d.getMonth()]} · ${DAYN[(G.day - 1) % 7]}`;
+    $('#hClock').textContent = G.phase === 'night' ? 'Gece' : hhmm(G.time);
+    $('#hCash').textContent = fmt(G.cash);
+    $('#hHeat').style.setProperty('--v', clamp(G.heat, 0, 100) + '%');
+    $('#hHeatN').textContent = Math.round(G.heat);
+    $('#hudHeat').classList.toggle('hot', G.heat >= 60);
+    const due = DUE[G.paidN];
+    if (due && !G.endless) {
+      const left = due.day - G.day;
+      $('#hDebt').innerHTML = `<b>${fmt(due.amt)} L</b><span>${left <= 0 ? 'bu akşam' : left + ' gün'}</span>`;
+      $('#hudDebt').classList.toggle('urgent', left <= 1);
+      $('#hudDebt').hidden = false;
+    } else $('#hudDebt').hidden = true;
+    const tc = $('#tCash'); if (tc) { tc.textContent = fmt(G.cash); $('#tHeat').textContent = Math.round(G.heat); $('#tDay').textContent = G.day + '. gece'; }
+  }
+  function countTo(el, from, to) {
+    MD.tween(0.6, p => { el.textContent = fmt(from + (to - from) * MD.U.ease(p)); });
+  }
+  function addCash(delta) {
+    const from = G.cash; G.cash += delta;
+    countTo($('#hCash'), from, G.cash);
+    const hc = $('#hudCash'); hc.classList.remove('bump-pos', 'bump-neg'); void hc.offsetWidth; hc.classList.add(delta >= 0 ? 'bump-pos' : 'bump-neg');
+    floatText((delta >= 0 ? '+' : '−') + fmt(Math.abs(delta)) + ' L', delta >= 0 ? 'pos' : 'neg', 'hud');
+    if (delta < 0) G.stats.spent -= delta; else G.stats.earned += delta;
+  }
+  function addHeat(v) {
+    G.heat = clamp(G.heat + v, 0, 100);
+    hud();
+    if (v > 0) floatText('Polis dikkati +' + v, 'heat', 'hud');
+  }
+  function floatText(txt, cls, where) {
+    const f = document.createElement('div');
+    f.className = 'float ' + cls + (where === 'hud' ? ' at-hud' : '');
+    f.textContent = txt;
+    $('#fx').appendChild(f);
+    setTimeout(() => f.remove(), 1700);
+  }
+  async function tick(min) {
+    const from = G.time; G.time = Math.min(G.time + min, CLOSE + 60);
+    await MD.tween(0.35, p => { const m = from + (G.time - from) * p; MD.Shop.setTime(m); $('#hClock').textContent = hhmm(m); });
+    hud();
+  }
+
+  /* ---------- konuşma balonu ---------- */
+  let skipType = false, tapWait = null, typing = false;
+  async function say(c, text, o = {}) {
+    const sp = $('#speech');
+    sp.hidden = false;
+    sp.style.setProperty('--tag', c.tag || '#6b4b2c');
+    $('#spName').textContent = c.name;
+    $('#spRole').textContent = c.role || '';
+    renderPatience(c);
+    const el = $('#spText');
+    el.textContent = '';
+    sp.classList.remove('wait');
+    if (c.actor) c.actor.talking = true;
+    skipType = false; typing = true;
+    for (let i = 0; i < text.length; i++) {
+      if (skipType) { el.textContent = text; break; }
+      el.textContent += text[i];
+      const ch = text[i];
+      await sleep(ch === '.' || ch === '?' || ch === '!' ? 110 : ch === ',' ? 60 : 17);
+    }
+    typing = false;
+    if (c.actor) c.actor.talking = false;
+    if (o.wait) {
+      sp.classList.add('wait');
+      await new Promise(r => { tapWait = r; });
+      sp.classList.remove('wait');
+    }
+  }
+  function renderPatience(c) {
+    const el = $('#spPat');
+    if (c.pat == null || c.patMax == null) { el.innerHTML = ''; return; }
+    el.innerHTML = Array.from({ length: c.patMax }, (_, i) => `<i class="${i < c.pat ? 'on' : ''}"></i>`).join('');
+    el.title = 'Sabır';
+  }
+  function hideSpeech() { $('#speech').hidden = true; }
+
+  /* ---------- alt panel ---------- */
+  let actRes = null, panelId = 0, queued = null;
+  function waitAct() {
+    if (queued && queued.id === panelId) { const a = queued.act; queued = null; return Promise.resolve(a); }
+    queued = null;
+    return new Promise(r => { actRes = r; });
+  }
+  let lastPanel = '';
+  function panel(html, cls = '') {
+    if (html + cls === lastPanel) return;
+    lastPanel = html + cls;
+    const p = $('#panel');
+    p.className = 'panel ' + cls;
+    p.innerHTML = html;
+    panelId++;
+  }
+  const TOOL_SVG = {
+    c: '<svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15,15 L21,21" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M7,8 A4,4 0 0 1 10,5.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
+    a: '<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="11" rx="4" fill="currentColor" opacity=".85"/><path d="M6,13 C9,11 13,15 18,12" stroke="#e8c877" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+    p: '<svg viewBox="0 0 24 24"><path d="M3,5 C6,4 9,4 12,6 C15,4 18,4 21,5 V19 C18,18 15,18 12,20 C9,18 6,18 3,19Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12,6 V20 M5,8 H9 M5,11 H9 M15,8 H19 M15,11 H19" stroke="currentColor" stroke-width="1.2"/></svg>',
+  };
+  const TOOL_N = { c: ['Büyüteç', 'Durum'], a: ['Mihenk Taşı', 'Özgünlük'], p: ['Fiyat Kataloğu', 'Değer'] };
+
+  function estText(it) {
+    const e = D.estimate(it);
+    return e[0] === e[1] ? money(e[0]) : `${fmt(e[0])}–${fmt(e[1])} L`;
+  }
+  function cardHTML(it, o = {}) {
+    const R = D.RAR[it.r], C = D.COND[it.c], cat = D.CATS[it.cat];
+    const cond = it.k.c ? `<b style="color:${C.c}">${C.n}</b>` : `<span class="unk">?</span>`;
+    const auth = it.k.a ? (it.fake ? `<b class="neg">Sahte</b>` : `<b class="pos">Hakiki</b>`) : `<span class="unk">?</span>`;
+    return `<div class="card ${o.small ? 'small' : ''}" style="--rar:${R.c}">
+      <div class="card-art">${MD.Art.item(it)}${it.stolen ? '<span class="tag-stolen">Çalıntı</span>' : ''}<div class="stamp-slot"></div></div>
+      <div class="card-info">
+        <div class="card-name">${it.name}</div>
+        <div class="card-rar"><span style="color:${R.c}">${R.n}</span> · ${cat.g}</div>
+        <dl>
+          <dt>Durum</dt><dd>${cond}</dd>
+          <dt>Özgünlük</dt><dd>${auth}</dd>
+          <dt>Tahmin</dt><dd class="est">${estText(it)}</dd>
+          ${o.paid != null ? `<dt>Ödenen</dt><dd>${money(o.paid)}</dd>` : ''}
+        </dl>
+      </div>
+    </div>`;
+  }
+  function toolsHTML(it) {
+    return `<div class="tools">${['c', 'a', 'p'].map(t => `<button class="tool" data-act="t:${t}" ${it.k[t] ? 'disabled' : ''}>
+      ${TOOL_SVG[t]}<span>${TOOL_N[t][0]}</span><small>${it.k[t] ? 'Bakıldı' : TOOL_N[t][1] + ' · 15 dk'}</small></button>`).join('')}</div>`;
+  }
+  function plRange(it, price, sellerMode) {
+    const e = D.estimate(it);
+    if (sellerMode) return [e[0] - price, e[1] - price];
+    return [price - it.paid, price - it.paid];
+  }
+  function plHTML(it, price, sellerMode) {
+    const [a, b] = plRange(it, price, sellerMode);
+    const sgn = v => (v >= 0 ? '+' : '−') + fmt(Math.abs(v));
+    if (!sellerMode) return `<div class="pl ${a >= 0 ? 'pos' : 'neg'}"><span>${a >= 0 ? 'Kâr' : 'Zarar'}</span><b>${sgn(a)} L</b></div>`;
+    const cls = a >= 0 ? 'pos' : b < 0 ? 'neg' : 'mid';
+    return `<div class="pl ${cls}"><span>Olası kâr</span><b>${a === b ? sgn(a) : sgn(a) + ' / ' + sgn(b)} L</b></div>`;
+  }
+  function hint(t) { return G.day <= 2 ? `<p class="hint">${t}</p>` : ''; }
+
+  function dealHTML(c) {
+    const it = c.item, seller = c.kind === 'seller';
+    const price = seller ? c.ask : c.offer;
+    const canPay = !seller || G.cash >= price;
+    return `${cardHTML(it, { paid: seller ? null : it.paid })}
+      <div class="offer-row">
+        <div class="offer"><span>${seller ? 'İstenen' : 'Teklif'}</span><b>${money(price)}</b></div>
+        ${plHTML(it, price, seller)}
+      </div>
+      ${seller ? toolsHTML(it) : ''}
+      ${seller ? hint('Tahmin aralığı geniş. Aletler aralığı daraltır ama her biri 15 dakika sürer.') : hint('Pazarlıkta müşterinin yüzüne bak: kaşları çatılıyorsa çizgiye yaklaşıyorsun.')}
+      <div class="acts">
+        <button class="btn primary" data-act="accept" ${canPay ? '' : 'disabled'}>${seller ? 'Satın al' : 'Sat'} · ${money(price)}</button>
+        <button class="btn" data-act="haggle">Pazarlık</button>
+        <button class="btn danger" data-act="reject">${seller ? 'Reddet' : 'Satmam'}</button>
+      </div>
+      ${canPay ? '' : '<p class="warn">Kasada bu kadar para yok. Pazarlık et ya da geri çevir.</p>'}`;
+  }
+
+  /* ---------- inceleme ---------- */
+  async function inspect(it, t) {
+    const art = document.querySelector('#panel .card-art');
+    if (art) {
+      const a = document.createElement('div');
+      a.className = 'tool-anim tool-' + t;
+      a.innerHTML = TOOL_SVG[t];
+      art.appendChild(a);
+    }
+    MD.Audio.play('scan');
+    await Promise.all([sleep(1000), tick(15)]);
+    it.k[t] = true;
+    let txt = '', cls = '';
+    if (t === 'c') { txt = D.COND[it.c].n; cls = it.c >= 2 ? 'pos' : 'neg'; }
+    if (t === 'a') { txt = it.fake ? 'SAHTE' : 'HAKİKİ'; cls = it.fake ? 'neg' : 'pos'; }
+    if (t === 'p') { txt = estText(it); cls = 'ink'; }
+    return { txt, cls };
+  }
+  function stamp(txt, cls, sel = '#panel .stamp-slot') {
+    const s = document.querySelector(sel);
+    if (!s) return;
+    s.innerHTML = `<div class="stamp ${cls}">${txt}</div>`;
+    MD.Audio.play('stamp'); MD.haptic('medium');
+  }
+
+  /* ---------- müşteri üretimi ---------- */
+  const L = {
+    sell: {
+      saf: ['Merhaba efendim. Tavan arasında bir {n} buldum. {p} lira eder mi, bilmem ki?', 'Kusura bakmayın, ben pek anlamam bu işlerden. Şu {n} için {p} lira olur mu?'],
+      normal: ['İyi günler. Ben {name}. Şu {n} elimde kaldı, {p} liraya bırakırım.', 'Rahmetli babamdan kalma bir {n}. {p} lira istiyorum.', 'Taşınıyoruz, eşyaları elden çıkarıyorum. {n} için {p} lira diyorum.'],
+      uyanik: ['Bu {n} kolay bulunmaz, siz de bilirsiniz. {p} liranın altına inmem.', 'Pera\'da bunu kapışırlar. Size {p} lira, dostluğumuza.'],
+      dolandirici: ['Hakiki {n}, garantili! Acelem var, {p} liraya veriyorum.', 'Bakın, bu {n} bir paşa ailesinden kalma. {p} lira, çok ucuz!'],
+      tekinsiz: ['(fısıltıyla) Nereden geldiğini sorma. {n}. {p} lira, peşin.', 'Dün gece... neyse. Şu {n} sende kalsın. {p} lira yeter.'],
+    },
+    sCounter: ['{p} olsun, orta yol.', 'Olmaz. {p} diyelim.', 'Biraz daha yaklaşın: {p} lira.', '{p}. Daha aşağısı zor.'],
+    sInsult: ['Dalga mı geçiyorsunuz? En az {p}.', 'Bu fiyata ancak ceketimi veririm. {p}!'],
+    sAccept: ['Anlaştık. Hayırlı olsun.', 'Peki, olsun. Paraya ihtiyacım var.', 'Tamam, sizin olsun.'],
+    sLeave: ['Vaktimi harcadınız. Hoşça kalın.', 'Başka antikacı mı yok! Allahaısmarladık.'],
+    sRejected: ['Peki... Başka kapıya.', 'Siz bilirsiniz. İyi günler.'],
+    buy: {
+      koleksiyoncu: ['Koleksiyonuma bir {n} arıyordum. {p} lira teklif ediyorum.', 'Şu {n}... İlginç parça. {p} lira veririm.'],
+      turist: ['Bonjour! Ah, {n}! Très joli. {p} lira, olur mu?', 'Good day! This {n} is lovely. {p} lira?'],
+      normal: ['İyi günler. Şu {n} gözüme çarptı. {p} lira veririm.', 'Hanıma hediye arıyorum. {n} için {p} lira?'],
+      tuccar: ['{n} için {p} lira. Fazlasını vermem, ben de satacağım.', 'Toptan iş yaparım. {n}: {p} lira.'],
+    },
+    bCounter: ['Peki, {p} vereyim.', '{p} lira. Daha fazlası zor.', 'Hmm... {p} olur.'],
+    bInsult: ['O kadar mı? Soygun bu! En fazla {p}.', 'Ben bunu Pera\'da yarı fiyata bulurum. {p}.'],
+    bAccept: ['Anlaştık! Güle güle kullanayım.', 'Tamam, alıyorum.', 'Merci! Harika bir parça.'],
+    bLeave: ['Bu fiyata mı? Hoşça kalın.', 'Başka yerden alırım.'],
+    bRejected: ['Yazık... Peki.', 'Fikrinizi değiştirirseniz buralardayım.'],
+  };
+  const fill = (s, o) => s.replace(/\{(\w+)\}/g, (_, k) => o[k] != null ? (k === 'p' ? fmt(o[k]) : o[k]) : '');
+  const TAG = { seller: '#6b4b2c', buyer: '#3d6a34', lender: '#8e2a22', komiser: '#23466e', recruit: '#5a4a6a', muhbir: '#4a4a3a' };
+
+  function mkSeller() {
+    const type = wpick(['saf', 'normal', 'uyanik', 'dolandirici', 'tekinsiz'], [18, 40, 20, G.day < 2 ? 8 : 13, G.day < 2 ? 4 : 9]);
+    const rw = G.day < 4 ? [60, 28, 10, 2] : [48, 31, 16, 5];
+    const it = D.makeItem({ rw, fake: type === 'dolandirici', stolen: type === 'tekinsiz' });
+    const av = D.authVal(it);
+    let ask, min;
+    if (type === 'saf') { ask = av * rnd(0.45, 0.7); min = ask * rnd(0.8, 0.92); }
+    else if (type === 'normal') { ask = av * rnd(0.8, 1.02); min = ask * rnd(0.72, 0.88); }
+    else if (type === 'uyanik') { ask = av * rnd(1.0, 1.3); min = ask * rnd(0.8, 0.9); }
+    else if (type === 'dolandirici') { ask = av * rnd(0.6, 0.85); min = ask * rnd(0.6, 0.75); }
+    else { ask = av * rnd(0.35, 0.55); min = ask * rnd(0.75, 0.9); }
+    ask = round5(ask); min = Math.min(ask, round5(min));
+    const spec = MD.People.randSpec();
+    const name = spec.f ? pick(D.FIRST_F) : pick(D.FIRST_M);
+    const pat = ri(2, 4);
+    return { kind: 'seller', type, name, role: 'Satıcı', tag: TAG.seller, spec, item: it, ask, min, pat, patMax: pat, tell: rnd(-0.06, 0.06), greet: fill(pick(L.sell[type]), { n: it.name, p: ask, name }) };
+  }
+  function mkBuyer() {
+    const type = wpick(['koleksiyoncu', 'turist', 'normal', 'tuccar'], [18, 16, 40, 26]);
+    const it = wpick(G.inv, G.inv.map(x => type === 'koleksiyoncu' ? 1 + x.r * 2 : 1));
+    const av = D.authVal(it), tv = D.trueVal(it);
+    const tr = G.trend && G.trend.up === it.cat ? 1.3 : G.trend && G.trend.down === it.cat ? 0.8 : 1;
+    let max;
+    if (type === 'koleksiyoncu') max = (it.fake && !hasPerk('kalpazan') ? tv : av) * rnd(1.2, 1.6);
+    else if (type === 'turist') max = av * rnd(1.1, 1.45);
+    else if (type === 'normal') max = av * rnd(0.95, 1.2);
+    else max = av * rnd(0.8, 1.0);
+    max = round5(max * tr);
+    const offer = Math.max(1, round5(max * rnd(0.55, 0.78)));
+    const tur = type === 'turist';
+    const spec = MD.People.randSpec(tur ? { hat: Math.random() < 0.5 ? 'fedora' : 'none', coat: '#76674f' } : type === 'koleksiyoncu' ? { gls: pick(['monocle', 'round']), old: true } : {});
+    const name = tur ? (spec.f ? pick(['Madam Anjel', 'Miss Olive', 'Madam Matild']) : pick(['Mösyö Pierre', 'Mister Hollis', 'Herr Weber'])) : spec.f ? pick(D.FIRST_F) : pick(D.FIRST_M);
+    const role = { koleksiyoncu: 'Koleksiyoncu', turist: 'Seyyah', normal: 'Alıcı', tuccar: 'Tüccar' }[type];
+    const pat = ri(2, 4);
+    return { kind: 'buyer', type, name, role, tag: TAG.buyer, spec, item: it, max, offer, pat, patMax: pat, tell: rnd(-0.06, 0.06), greet: fill(pick(L.buy[type]), { n: it.name, p: offer }) };
+  }
+  function nextCustomer() {
+    if (!G.komiserToday && G.heat >= 45 && Math.random() < (G.heat - 35) / 100) { G.komiserToday = true; return { kind: 'komiser', name: 'Komiser Cevdet', role: 'Beyoğlu Karakolu', tag: TAG.komiser, spec: KOMISER() }; }
+    if (G.crew.length < 5 && G.day > 1 && Math.random() < 0.06) { const cr = D.makeCrew(); return { kind: 'recruit', name: cr.name, role: D.ROLES[cr.role].n, tag: TAG.recruit, spec: cr.spec, crew: cr }; }
+    if (!G.tip && G.day > 1 && Math.random() < 0.05) return { kind: 'muhbir', name: 'Muhbir Şaban', role: 'Kulak', tag: TAG.muhbir, spec: MUHBIR() };
+    if (G.inv.length === 0 || Math.random() < (G.inv.length > 7 ? 0.35 : 0.52)) return mkSeller();
+    return mkBuyer();
+  }
+
+  /* ---------- sahneye giriş / çıkış ---------- */
+  async function enter(c) {
+    c.actor = new MD.Actor(c.spec);
+    c.actor.place(63, 270, 0.42);
+    c.actor.el.setAttribute('opacity', '0');
+    MD.Shop.actors.appendChild(c.actor.el);
+    const door = MD.Shop.openDoor();
+    await MD.tween(0.3, p => c.actor.el.setAttribute('opacity', p.toFixed(2)));
+    await door;
+    await c.actor.walkTo(292, 474, 0.86, 1.7);
+    MD.Shop.closeDoor();
+    c.actor.setPose(c.spec.acc === 'cigar' ? 'cigar' : 'counter');
+    c.actor.lookT = 0;
+  }
+  async function leave(c) {
+    await sleep(350);
+    hideSpeech();
+    c.actor.setPose('idle');
+    MD.Shop.openDoor();
+    await c.actor.walkTo(63, 270, 0.42, 1.5);
+    await MD.tween(0.25, p => c.actor.el.setAttribute('opacity', (1 - p).toFixed(2)));
+    c.actor.remove();
+    await MD.Shop.closeDoor();
+  }
+
+  /* ---------- canlı yüz ifadesi (pazarlık ipucu) ---------- */
+  function react(c, price) {
+    let r = c.kind === 'seller' ? price / c.min : c.max / price;
+    r += c.tell;
+    const e = r >= 1 ? (r >= 1.15 ? 'delight' : 'happy') : r >= 0.9 ? 'think' : r >= 0.72 ? 'annoyed' : 'angry';
+    c.actor.setEmotion(e);
+  }
+
+  /* ---------- pazarlık ---------- */
+  function haggle(c) {
+    const seller = c.kind === 'seller', it = c.item;
+    const lo = seller ? Math.max(1, round5(c.ask * 0.2)) : c.offer;
+    const hi = seller ? c.ask : Math.max(round5(c.offer * 2.5), c.offer + 20);
+    let price = seller ? round5(c.ask * 0.8) : round5(c.offer * 1.25);
+    price = clamp(price, lo, hi);
+    panel(`${cardHTML(it, { small: true, paid: seller ? null : it.paid })}
+      <div class="haggle">
+        <div class="hg-label">${seller ? 'Senin teklifin' : 'İstediğin fiyat'} <small>${seller ? 'İstenen: ' + money(c.ask) : 'Onun teklifi: ' + money(c.offer)}</small></div>
+        <div class="hg-row">
+          <button class="step" data-act="h:-10">−10%</button>
+          <button class="step" data-act="h:-">−</button>
+          <output id="hgOut">${money(price)}</output>
+          <button class="step" data-act="h:+">+</button>
+          <button class="step" data-act="h:+10">+10%</button>
+        </div>
+        <input id="hgRange" type="range" min="${lo}" max="${hi}" step="1" value="${price}" aria-label="Fiyat">
+        <div id="hgPl"></div>
+        <div class="acts">
+          <button class="btn primary" data-act="offer" id="hgOffer">Teklif ver</button>
+          <button class="btn" data-act="back">Vazgeç</button>
+        </div>
+        <p class="warn" id="hgWarn" hidden>Kasada bu kadar para yok.</p>
+      </div>`, 'haggling');
+    const out = $('#hgOut'), rg = $('#hgRange');
+    const upd = () => {
+      out.textContent = money(price);
+      rg.value = price;
+      $('#hgPl').innerHTML = plHTML(it, price, seller);
+      const cant = seller && price > G.cash;
+      $('#hgOffer').disabled = cant; $('#hgWarn').hidden = !cant;
+      react(c, price);
+    };
+    rg.addEventListener('input', () => { price = +rg.value; upd(); if (Math.random() < 0.3) MD.Audio.play('tick'); });
+    upd();
+    return (async () => {
+      while (true) {
+        const a = await waitAct();
+        const step = Math.max(1, round5(price * 0.02));
+        if (a === 'h:-') price -= step;
+        else if (a === 'h:+') price += step;
+        else if (a === 'h:-10') price = round5(price * 0.9);
+        else if (a === 'h:+10') price = round5(price * 1.1);
+        else if (a === 'offer') return price;
+        else if (a === 'back') { c.actor.setEmotion('neutral'); return null; }
+        price = clamp(price, lo, hi);
+        upd();
+      }
+    })();
+  }
+  function respond(c, o) {
+    if (c.kind === 'seller') {
+      if (o >= c.min) return { type: 'accept', price: o };
+      const gap = (c.min - o) / c.min;
+      c.pat -= gap > 0.3 ? 2 : 1;
+      if (c.pat <= 0) return { type: 'leave' };
+      c.ask = Math.max(c.min, Math.min(c.ask, round5(c.ask - (c.ask - o) * rnd(0.3, 0.5))));
+      return { type: 'counter', price: c.ask, insult: gap > 0.3 };
+    }
+    if (o <= c.max) return { type: 'accept', price: o };
+    const gap = (o - c.max) / c.max;
+    c.pat -= gap > 0.3 ? 2 : 1;
+    if (c.pat <= 0) return { type: 'leave' };
+    c.offer = Math.min(c.max, Math.max(c.offer, round5(c.offer + (o - c.offer) * rnd(0.3, 0.5))));
+    return { type: 'counter', price: c.offer, insult: gap > 0.3 };
+  }
+
+  /* ---------- işlemler ---------- */
+  function logDeal(kind, it, price, pl) {
+    G.dayLog.push({ k: kind, n: it.name, p: price, pl, t: hhmm(G.time) });
+  }
+  async function doBuy(c, price) {
+    const it = c.item;
+    c.actor.setEmotion('happy', 2000); c.actor.nod();
+    addCash(-price); MD.Audio.play('pay'); MD.haptic('medium');
+    it.paid = price; it.day = G.day;
+    G.inv.push(it); G.stats.bought++;
+    logDeal('Alış', it, price, null);
+    stamp('ALINDI', 'ink');
+    MD.Shop.cash(price, false);
+    await tick(5);
+    await say(c, pick(L.sAccept));
+    await MD.Shop.takeItem('shelf');
+    MD.Shop.setShelf(G.inv);
+    await leave(c);
+  }
+  async function doSell(c, price) {
+    const it = c.item, pl = price - it.paid;
+    c.actor.setEmotion('delight', 2200); c.actor.hop();
+    addCash(price); MD.Audio.play('coin'); MD.haptic('success');
+    G.inv = G.inv.filter(x => x.id !== it.id);
+    G.stats.sold++; G.stats.profit += pl; G.stats.best = Math.max(G.stats.best, pl);
+    logDeal('Satış', it, price, pl);
+    stamp((pl >= 0 ? 'KÂR +' : 'ZARAR −') + fmt(Math.abs(pl)), pl >= 0 ? 'pos' : 'neg');
+    setTimeout(() => floatText((pl >= 0 ? 'Kâr +' : 'Zarar −') + fmt(Math.abs(pl)) + ' L', pl >= 0 ? 'pos big' : 'neg big', 'stage'), 250);
+    MD.Shop.cash(price, true);
+    if (it.stolen) addHeat(6);
+    if (it.fake) addHeat(2);
+    await tick(5);
+    await say(c, pick(L.bAccept));
+    await MD.Shop.takeItem('up');
+    MD.Shop.setShelf(G.inv);
+    await leave(c);
+  }
+
+  async function sellerVisit(c) {
+    const it = c.item;
+    if (hasPerk('eksper')) it.k.c = true;
+    await enter(c);
+    c.actor.setPose('present');
+    MD.Shop.showItem(it);
+    await tick(10);
+    panel(dealHTML(c), 'deal');
+    await say(c, c.greet);
+    c.actor.setPose('counter');
+    while (true) {
+      panel(dealHTML(c), 'deal');
+      const act = await waitAct();
+      if (act.startsWith('t:')) {
+        const t = act[2];
+        c.actor.lookT = 0; c.actor.setEmotion(c.type === 'dolandirici' && t === 'a' ? 'worried' : 'neutral');
+        const r = await inspect(it, t);
+        panel(dealHTML(c), 'deal');
+        stamp(r.txt, r.cls);
+        if (t === 'a' && it.fake && c.type === 'dolandirici') {
+          c.actor.setEmotion('surprised', 1400); c.actor.shake();
+          await sleep(500);
+          if (Math.random() < 0.45) { await say(c, 'Eh... Benim acelem vardı zaten. Hoşça kalın!'); await MD.Shop.takeItem('up'); await leave(c); return; }
+          c.ask = Math.max(3, round5(D.authVal(it) * rnd(0.12, 0.25))); c.min = Math.max(2, round5(c.ask * 0.7));
+          await say(c, `Sahte mi? Olamaz... Ben de öyle aldım! Peki, ${fmt(c.ask)} lira olsun.`);
+        } else if (t === 'c' && it.c >= 3) c.actor.setEmotion('sly', 1200);
+        continue;
+      }
+      if (act === 'accept') { await doBuy(c, c.ask); return; }
+      if (act === 'reject') { c.actor.setEmotion('sad'); await say(c, pick(L.sRejected)); await MD.Shop.takeItem('up'); await leave(c); return; }
+      if (act === 'haggle') {
+        const o = await haggle(c);
+        if (o == null) continue;
+        await tick(10);
+        const r = respond(c, o);
+        if (r.type === 'accept') { await doBuy(c, r.price); return; }
+        if (r.type === 'leave') { c.actor.setEmotion('angry'); c.actor.shake(); renderPatience(c); await say(c, pick(L.sLeave)); await MD.Shop.takeItem('up'); await leave(c); return; }
+        c.actor.setEmotion(r.insult ? 'angry' : 'annoyed', 1600);
+        if (r.insult) c.actor.shake(); else c.actor.setPose('shrug');
+        panel(dealHTML(c), 'deal');
+        await say(c, fill(pick(r.insult ? L.sInsult : L.sCounter), { p: r.price }));
+        c.actor.setPose('counter'); c.actor.setEmotion('neutral');
+      }
+    }
+  }
+
+  async function buyerVisit(c) {
+    const it = c.item;
+    await enter(c);
+    c.actor.setPose('point'); c.actor.lookT = -0.8;
+    await sleep(500);
+    MD.Shop.showItem(it);
+    await tick(10);
+    c.actor.setPose('counter'); c.actor.lookT = 0;
+    if (c.type === 'koleksiyoncu' && it.fake && !hasPerk('kalpazan') && Math.random() < 0.85) {
+      c.actor.setEmotion('angry'); c.actor.shake();
+      await say(c, `Bu ${it.name} sahte! Beni kandıracağını mı sandın? Rezalet!`, { wait: false });
+      addHeat(3);
+      await MD.Shop.takeItem('shelf');
+      await leave(c);
+      return;
+    }
+    panel(dealHTML(c), 'deal');
+    await say(c, c.greet);
+    while (true) {
+      panel(dealHTML(c), 'deal');
+      const act = await waitAct();
+      if (act === 'accept') { await doSell(c, c.offer); return; }
+      if (act === 'reject') { c.actor.setEmotion('sad'); await say(c, pick(L.bRejected)); await MD.Shop.takeItem('shelf'); await leave(c); return; }
+      if (act === 'haggle') {
+        const o = await haggle(c);
+        if (o == null) continue;
+        await tick(10);
+        const r = respond(c, o);
+        if (r.type === 'accept') { await doSell(c, r.price); return; }
+        if (r.type === 'leave') { c.actor.setEmotion('angry'); c.actor.shake(); renderPatience(c); await say(c, pick(L.bLeave)); await MD.Shop.takeItem('shelf'); await leave(c); return; }
+        c.actor.setEmotion(r.insult ? 'angry' : 'think', 1600);
+        if (r.insult) c.actor.shake(); else c.actor.setPose('think');
+        panel(dealHTML(c), 'deal');
+        await say(c, fill(pick(r.insult ? L.bInsult : L.bCounter), { p: r.price }));
+        c.actor.setPose('counter'); c.actor.setEmotion('neutral');
+      }
+    }
+  }
+
+  function crewCardHTML(cr, o = {}) {
+    const R = D.ROLES[cr.role];
+    const bar = (k, n) => `<div class="stat"><span>${n}</span><i style="--v:${cr[k] * 20}%"></i><b>${cr[k]}</b></div>`;
+    return `<div class="crew-card ${o.cls || ''}" ${o.attr || ''}>
+      <div class="crew-pt" data-pt="${cr.id}"></div>
+      <div class="crew-info">
+        <div class="crew-name">${cr.name}</div>
+        <div class="crew-role">${R.n}${cr.hurt ? ' · <b class="neg">Yaralı ' + cr.hurt + ' gün</b>' : ''}${cr.jail ? ' · <b class="neg">Nezarette ' + cr.jail + ' gün</b>' : ''}</div>
+        ${bar('kas', 'Kas')}${bar('sin', 'Sinsilik')}${bar('akl', 'Kurnazlık')}
+        <div class="crew-perk">${R.perk}</div>
+        <div class="crew-wage">Günlük ${money(cr.wage)}${o.hire ? ' · İşe alma ' + money(cr.hire) : ''}</div>
+      </div>
+    </div>`;
+  }
+  const portraits = [];
+  function mountPortraits(root, list) {
+    root.querySelectorAll('[data-pt]').forEach(el => {
+      const cr = list.find(x => x.id === el.getAttribute('data-pt'));
+      if (!cr) return;
+      const p = MD.People.portrait(cr.spec, { emotion: cr.hurt || cr.jail ? 'sad' : 'neutral' });
+      el.appendChild(p.svg); portraits.push(p.actor);
+    });
+  }
+  function clearPortraits() { portraits.splice(0).forEach(a => a.remove()); }
+
+  async function recruitVisit(c) {
+    await enter(c);
+    await say(c, pick(['Selam patron. Dayının adamlarını tanırdım. İş var mı?', 'Kolum güçlü, dilim kısa. İş arıyorum.', 'Duydum ki dükkânın gece de açıkmış. Bana yer var mı?']));
+    panel(crewCardHTML(c.crew, { hire: true }) + `<div class="acts"><button class="btn primary" data-act="hire" ${G.cash >= c.crew.hire ? '' : 'disabled'}>İşe al · ${money(c.crew.hire)}</button><button class="btn" data-act="no">Gerek yok</button></div>`, 'deal');
+    mountPortraits($('#panel'), [c.crew]);
+    const a = await waitAct();
+    clearPortraits();
+    if (a === 'hire') { addCash(-c.crew.hire); G.crew.push(c.crew); c.actor.setEmotion('delight', 1500); c.actor.hop(); await say(c, 'Pişman olmayacaksın patron. Akşam görüşürüz.'); }
+    else { c.actor.setEmotion('sad'); await say(c, 'Peki. Fikrin değişirse meyhanede bulursun beni.'); }
+    await leave(c);
+  }
+  async function muhbirVisit(c) {
+    await enter(c);
+    c.actor.setEmotion('sly');
+    await say(c, 'Psst. Otuz lira ver, bu gece işine yarayacak bir fısıltı söyleyeyim.');
+    panel(`<div class="note">Muhbir ipucu, bu gecenin işlerinden birinde başarı şansını ve ödülü artırır.</div><div class="acts"><button class="btn primary" data-act="pay" ${G.cash >= 30 ? '' : 'disabled'}>Öde · 30 L</button><button class="btn" data-act="no">Defol</button></div>`, 'deal');
+    const a = await waitAct();
+    if (a === 'pay') { addCash(-30); G.tip = true; await say(c, 'Bu gece bekçiler vardiya değiştiriyor. Haritada yıldızlı işe bak.'); }
+    else { c.actor.setEmotion('annoyed'); await say(c, 'Sen bilirsin. Kulak bedava değil.'); }
+    await leave(c);
+  }
+  async function komiserVisit(c) {
+    await enter(c);
+    c.actor.setPose('cross'); c.actor.setEmotion('annoyed');
+    const stolen = G.inv.filter(x => x.stolen);
+    await say(c, stolen.length ? 'Duyduğuma göre dükkânında kaynağı belirsiz mallar varmış.' : 'Şöyle bir bakayım dedim. Mahallede adın çok geçiyor.');
+    const bribe = round5(40 + G.heat * 2.5);
+    panel(`<div class="note">Polis dikkati: <b>${Math.round(G.heat)}</b>. ${stolen.length ? `Depoda <b>${stolen.length}</b> çalıntı mal var.` : 'Depoda çalıntı mal yok.'}</div>
+      <div class="acts"><button class="btn" data-act="bribe" ${G.cash >= bribe ? '' : 'disabled'}>Rüşvet ver · ${money(bribe)}</button><button class="btn primary" data-act="search">Buyurun, arayın</button></div>`, 'deal');
+    const a = await waitAct();
+    if (a === 'bribe') {
+      addCash(-bribe); G.heat = clamp(G.heat - 15, 0, 100); hud();
+      c.actor.setEmotion('sly'); await say(c, 'Görmedim say. Ama bir dahakine bu kadar anlayışlı olmam.');
+    } else {
+      c.actor.setPose('point');
+      await tick(20);
+      const found = stolen.filter(() => Math.random() < 0.75);
+      if (found.length) {
+        G.inv = G.inv.filter(x => !found.includes(x));
+        const fine = round5(G.cash * 0.15);
+        addCash(-fine); G.heat = clamp(G.heat - 10, 0, 100); hud();
+        MD.Shop.setShelf(G.inv);
+        c.actor.setEmotion('angry');
+        await say(c, `${found.map(x => x.name).join(', ')}... Çalıntı! El koyuyorum. Cezası da ${fmt(fine)} lira.`, { wait: true });
+      } else {
+        G.heat = clamp(G.heat - 8, 0, 100); hud();
+        c.actor.setEmotion('think');
+        await say(c, 'Hmm. Temiz görünüyor... Şimdilik.');
+      }
+    }
+    await leave(c);
+  }
+
+  /* ---------- tefeci ---------- */
+  function nuri() { return { kind: 'lender', name: 'Nuri Efendi', role: 'Tefeci', tag: TAG.lender, spec: NURI() }; }
+  async function introScene() {
+    const c = nuri();
+    panel(`<div class="note center">Kapının zili çalıyor…</div>`, 'idle');
+    await enter(c);
+    c.actor.setEmotion('think');
+    await say(c, 'Demek dükkânın yeni sahibi sensin. Başın sağ olsun, Rıza rahmetli iyi adamdı.', { wait: true });
+    c.actor.setEmotion('sly'); c.actor.setPose('present');
+    await say(c, 'Ama bana borcunu ödemeden gitti. Defterde yazılı: tam 5.250 lira.', { wait: true });
+    c.actor.setPose('counter'); c.actor.setEmotion('annoyed');
+    await say(c, 'Üç taksit. Her pazar akşamı gelirim: 1.000, 1.750, 2.500. Gecikirsen dükkândaki mallar benim olur.', { wait: true });
+    c.actor.setEmotion('happy');
+    await say(c, 'Ucuza al, pahalıya sat, ne aldığını bil. Hüsnü de sana kalsın; gece işlerine yarar. Hadi, kolay gelsin.', { wait: true });
+    await leave(c);
+  }
+  async function lenderVisit() {
+    const due = DUE[G.paidN];
+    const c = nuri();
+    await enter(c);
+    c.actor.setEmotion('sly');
+    await say(c, `Pazar akşamı, evlat. Defter açık: ${fmt(due.amt)} lira.`);
+    const can = G.cash >= due.amt;
+    panel(`<div class="note">Taksit ${G.paidN + 1}/3 · <b>${money(due.amt)}</b> · Kasa <b>${money(G.cash)}</b></div>
+      <div class="acts">${can ? `<button class="btn primary" data-act="pay">Öde · ${money(due.amt)}</button>` : `<button class="btn danger" data-act="short">Kasadakini ver · ${money(G.cash)}</button>`}</div>
+      ${can ? '' : '<p class="warn">Eksik kalan kısım için Nuri Efendi raflardan mal alacak.</p>'}`, 'deal');
+    const a = await waitAct();
+    if (a === 'pay') {
+      addCash(-due.amt); G.paidN++;
+      MD.Audio.play('stamp'); MD.haptic('heavy');
+      panel(`<div class="seal-wrap"><div class="seal">ÖDENDİ</div><p>${G.paidN}. taksit kapandı.</p></div>`, 'idle');
+      c.actor.setEmotion('happy'); c.actor.nod();
+      if (G.paidN >= DUE.length) {
+        await say(c, 'Defter kapandı. Dayından iyi tüccar çıktın, evlat. Galata artık senin.', { wait: true });
+        await leave(c);
+        await victory();
+        return;
+      }
+      await say(c, `Aferin. Gelecek pazar ${fmt(DUE[G.paidN].amt)} lira. Unutma.`, { wait: true });
+    } else {
+      let rest = due.amt - G.cash;
+      if (G.cash > 0) addCash(-G.cash);
+      const taken = [];
+      const sorted = G.inv.slice().sort((x, y) => D.trueVal(y) - D.trueVal(x));
+      for (const it of sorted) { if (rest <= 0) break; rest -= Math.round(D.trueVal(it) * 0.6); taken.push(it); }
+      G.inv = G.inv.filter(x => !taken.includes(x));
+      MD.Shop.setShelf(G.inv);
+      if (rest > 0) {
+        c.actor.setEmotion('angry'); c.actor.shake();
+        await say(c, 'Kasa boş, raflar boş. Bu dükkân artık benim. Anahtarları bırak.', { wait: true });
+        await leave(c);
+        await gameOver('Dükkân elden gitti', 'Nuri Efendi taksiti tahsil edemedi ve dükkâna el koydu.');
+        return;
+      }
+      G.paidN++;
+      c.actor.setEmotion('annoyed');
+      await say(c, `${taken.length} parça mal aldım: ${taken.map(x => x.name).join(', ')}. Bir dahakine nakit isterim.`, { wait: true });
+      if (G.paidN >= DUE.length) { await leave(c); await victory(); return; }
+    }
+    await leave(c);
+  }
+
+  /* ---------- gün döngüsü ---------- */
+  function idlePanel() {
+    const late = G.time >= CLOSE - 60;
+    panel(`<div class="idle-wrap">
+      <div class="idle-clock">${hhmm(G.time)}</div>
+      <p>${late ? 'Kapanışa az kaldı.' : 'Dükkân açık. Kapının zilini bekliyorsun…'}</p>
+      <div class="acts"><button class="btn" data-act="close">Dükkânı kapat</button></div>
+    </div>`, 'idle');
+  }
+  async function visit(c) {
+    if (c.kind === 'seller') return sellerVisit(c);
+    if (c.kind === 'buyer') return buyerVisit(c);
+    if (c.kind === 'recruit') return recruitVisit(c);
+    if (c.kind === 'muhbir') return muhbirVisit(c);
+    if (c.kind === 'komiser') return komiserVisit(c);
+  }
+  async function dayLoop() {
+    if (running) return;
+    running = true;
+    G.phase = 'day';
+    $('#town').hidden = true;
+    hud(); MD.Shop.setTime(G.time); MD.Shop.setShelf(G.inv);
+    if (G.intro) { await introScene(); G.intro = false; save(); }
+    while (G.time < CLOSE && !closeEarly && !G.over) {
+      idlePanel();
+      const r = await Promise.race([sleep(1100).then(() => 'go'), waitAct()]);
+      actRes = null;
+      if (r === 'close') { closeEarly = true; break; }
+      if (G.heat >= 100) break;
+      await visit(nextCustomer());
+      if (G.over) break;
+      await tick(ri(10, 30));
+      save();
+    }
+    closeEarly = false;
+    running = false;
+    if (G.over) return;
+    if (G.heat >= 100) return arrested();
+    await endDay();
+  }
+  async function endDay() {
+    panel(`<div class="idle-wrap"><div class="idle-clock">Kapandı</div><p>Kepenkler iniyor.</p></div>`, 'idle');
+    MD.Shop.setTime(Math.max(G.time, CLOSE));
+    const due = DUE[G.paidN];
+    if (due && !G.endless && due.day === G.day) { await lenderVisit(); if (G.over) return; }
+    await ledgerSheet(true);
+    goNight();
+  }
+
+  /* ---------- sayfa (sheet) sistemi ---------- */
+  let sheetRes = null;
+  function openSheet(html, cls = '') {
+    const s = $('#sheet');
+    clearPortraits();
+    s.innerHTML = `<div class="sheet-card ${cls}">${html}</div>`;
+    if (s.hidden) { s.hidden = false; requestAnimationFrame(() => s.classList.add('open')); }
+    return new Promise(r => { sheetRes = r; });
+  }
+  function closeSheet() {
+    const s = $('#sheet');
+    clearPortraits();
+    s.classList.remove('open');
+    sheetRes = null;
+    setTimeout(() => { if (!s.classList.contains('open')) { s.hidden = true; s.innerHTML = ''; } }, 230);
+  }
+
+  function ledgerRows(log) {
+    if (!log.length) return '<p class="muted">Bugün defter boş kaldı.</p>';
+    return `<table class="ledger"><thead><tr><th>Saat</th><th>İşlem</th><th class="n">Tutar</th><th class="n">Kâr/Zarar</th></tr></thead><tbody>
+      ${log.map(r => `<tr><td>${r.t}</td><td><b>${r.k}</b> ${r.n}</td><td class="n">${r.k === 'Alış' ? '−' : '+'}${fmt(r.p)}</td><td class="n ${r.pl == null ? '' : r.pl >= 0 ? 'pos' : 'neg'}">${r.pl == null ? '·' : (r.pl >= 0 ? '+' : '−') + fmt(Math.abs(r.pl))}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
+  function stockValue() {
+    let a = 0, b = 0;
+    G.inv.forEach(it => { const e = D.estimate(it); a += e[0]; b += e[1]; });
+    return [a, b];
+  }
+  async function ledgerSheet(endOfDay) {
+    MD.Audio.play('page');
+    const spent = G.dayLog.filter(r => r.k === 'Alış').reduce((s, r) => s + r.p, 0);
+    const earned = G.dayLog.filter(r => r.k === 'Satış').reduce((s, r) => s + r.p, 0);
+    const realized = G.dayLog.filter(r => r.pl != null).reduce((s, r) => s + r.pl, 0);
+    const [sa, sb] = stockValue();
+    await openSheet(`<h2 class="sh-title">${endOfDay ? 'Günün Hesabı' : 'Defter'}</h2>
+      <p class="sh-sub">${G.day}. gün · ${hhmm(Math.min(G.time, CLOSE))}</p>
+      ${ledgerRows(G.dayLog)}
+      <div class="totals">
+        <div><span>Alışlara giden</span><b class="neg">−${fmt(spent)} L</b></div>
+        <div><span>Satışlardan gelen</span><b class="pos">+${fmt(earned)} L</b></div>
+        <div class="big"><span>Gerçekleşen kâr</span><b class="${realized >= 0 ? 'pos' : 'neg'}">${realized >= 0 ? '+' : '−'}${fmt(Math.abs(realized))} L</b></div>
+        <div><span>Kasa</span><b>${money(G.cash)}</b></div>
+        <div><span>Depodaki mal (${G.inv.length}) tahmini</span><b>${fmt(sa)}–${fmt(sb)} L</b></div>
+      </div>
+      <div class="acts">${endOfDay ? '<button class="btn primary" data-s="ok">Geceye çık</button>' : '<button class="btn" data-s="close">Kapat</button>'}</div>`, 'ledger-sheet');
+    closeSheet();
+  }
+
+  async function depoSheet() {
+    let sel = null;
+    while (true) {
+      const [sa, sb] = stockValue();
+      let html;
+      if (!sel) {
+        html = `<h2 class="sh-title">Depo</h2><p class="sh-sub">${G.inv.length} parça · tahmini ${fmt(sa)}–${fmt(sb)} L</p>
+          <div class="inv-list">${G.inv.length ? G.inv.map(it => {
+            const R = D.RAR[it.r];
+            return `<button class="inv-row" data-s="i:${it.id}" style="--rar:${R.c}">${MD.Art.item(it)}<span class="inv-n"><b>${it.name}</b><small><i style="color:${R.c}">${R.n}</i> · ${it.k.c ? D.COND[it.c].n : 'Durum ?'}${it.stolen ? ' · <em class="neg">Çalıntı</em>' : ''}${it.k.a && it.fake ? ' · <em class="neg">Sahte</em>' : ''}</small></span>
+              <span class="inv-v"><small>Ödenen</small>${money(it.paid)}<small>Tahmin ${estText(it)}</small></span></button>`;
+          }).join('') : '<p class="muted">Raflar boş. Satıcılardan mal al.</p>'}</div>
+          <div class="acts"><button class="btn" data-s="close">Kapat</button></div>`;
+      } else {
+        const it = G.inv.find(x => x.id === sel);
+        if (!it) { sel = null; continue; }
+        const day = G.phase === 'day';
+        html = `<h2 class="sh-title">${it.name}</h2>${cardHTML(it, { paid: it.paid })}
+          ${day ? `<div class="tools">${['c', 'a', 'p'].map(t => `<button class="tool" data-s="t:${t}" ${it.k[t] ? 'disabled' : ''}>${TOOL_SVG[t]}<span>${TOOL_N[t][0]}</span><small>${it.k[t] ? 'Bakıldı' : '15 dk'}</small></button>`).join('')}</div>` : ''}
+          <div class="acts"><button class="btn" data-s="back">Geri</button></div>`;
+      }
+      const v = await openSheet(html, 'depo-sheet');
+      if (v === 'close') break;
+      if (v === 'back') { sel = null; continue; }
+      if (v.startsWith('i:')) { sel = v.slice(2); continue; }
+      if (v.startsWith('t:')) {
+        const it = G.inv.find(x => x.id === sel);
+        if (it && !it.k[v[2]]) { it.k[v[2]] = true; await tick(15); MD.Audio.play('stamp'); save(); }
+      }
+    }
+    closeSheet();
+  }
+
+  async function ekipSheet() {
+    while (true) {
+      const html = `<h2 class="sh-title">Ekip</h2><p class="sh-sub">${G.crew.length}/5 kişi · günlük toplam ${money(G.crew.reduce((s, c) => s + c.wage, 0))}</p>
+        <div class="crew-list">${G.crew.map(cr => crewCardHTML(cr) + `<button class="btn small danger" data-s="f:${cr.id}">Kov</button>`).join('') || '<p class="muted">Ekip yok.</p>'}</div>
+        <p class="muted">Yeni adamları gece meyhanede ya da gündüz kapıda bulursun.</p>
+        <div class="acts"><button class="btn" data-s="close">Kapat</button></div>`;
+      const p = openSheet(html, 'ekip-sheet');
+      mountPortraits($('#sheet'), G.crew);
+      const v = await p;
+      if (v === 'close') break;
+      if (v.startsWith('f:')) { G.crew = G.crew.filter(c => c.id !== v.slice(2)); save(); }
+    }
+    closeSheet();
+  }
+
+  async function defterSheet() {
+    while (true) {
+      const html = `<h2 class="sh-title">Mühürlü Defter</h2>
+        <p class="sh-sub">Dayı Rıza'nın borcu · Nuri Efendi</p>
+        <div class="debts">${DUE.map((d, i) => `<div class="debt ${i < G.paidN ? 'paid' : ''}"><span>${d.day}. gün · Pazar</span><b>${money(d.amt)}</b>${i < G.paidN ? '<i class="mini-seal">ÖDENDİ</i>' : ''}</div>`).join('')}</div>
+        <div class="totals">
+          <div><span>Alınan / satılan parça</span><b>${G.stats.bought} / ${G.stats.sold}</b></div>
+          <div><span>Toplam gerçekleşen kâr</span><b class="${G.stats.profit >= 0 ? 'pos' : 'neg'}">${G.stats.profit >= 0 ? '+' : '−'}${fmt(Math.abs(G.stats.profit))} L</b></div>
+          <div><span>En kârlı satış</span><b>+${fmt(G.stats.best)} L</b></div>
+          <div><span>Gece işleri</span><b>${G.stats.jobs}</b></div>
+          <div><span>Piyasa</span><b><span class="pos">${D.CATS[G.trend.up].g} ↑</span> · <span class="neg">${D.CATS[G.trend.down].g} ↓</span></b></div>
+        </div>
+        <h3 class="sh-h3">Bugünkü işlemler</h3>
+        ${ledgerRows(G.dayLog)}
+        <div class="acts">
+          <button class="btn" data-s="snd">Ses: ${MD.Audio.on ? 'Açık' : 'Kapalı'}</button>
+          <button class="btn danger" data-s="new">Yeni oyun</button>
+          <button class="btn primary" data-s="close">Kapat</button>
+        </div>`;
+      const v = await openSheet(html, 'defter-sheet');
+      if (v === 'close') break;
+      if (v === 'snd') { MD.Audio.on = !MD.Audio.on; continue; }
+      if (v === 'new') {
+        const w = await openSheet(`<h2 class="sh-title">Yeni oyun?</h2><p>Bu oyundaki kasa, mallar ve ekip silinir. Geri alınamaz.</p>
+          <div class="acts"><button class="btn danger" data-s="yes">Evet, baştan başla</button><button class="btn" data-s="no">Vazgeç</button></div>`);
+        if (w === 'yes') { closeSheet(); clearSave(); location.reload(); return; }
+      }
+    }
+    closeSheet();
+  }
+
+  /* ---------- gece ---------- */
+  function goNight() {
+    G.phase = 'night';
+    if (!G.night) {
+      const pool = D.JOBS.filter(j => j.minDay <= G.day);
+      const jobs = MD.U.shuffle(pool).slice(0, 3).map(j => j.id);
+      G.night = { jobs, assign: {}, cands: [D.makeCrew(), D.makeCrew()], star: G.tip ? jobs[0] : null };
+    }
+    save();
+    MD.Audio.play('night');
+    $('#town').hidden = false;
+    hud();
+    renderTown();
+  }
+  const jobById = id => D.JOBS.find(j => j.id === id);
+  const crewById = id => G.crew.find(c => c.id === id);
+  function busyIn(id) { return Object.keys(G.night.assign).find(j => G.night.assign[j].includes(id)); }
+  function chance(job, ids) {
+    if (!ids.length) return 0;
+    const power = ids.map(crewById).filter(Boolean).reduce((s, c) => s + job.key.reduce((q, k) => q + c[k], 0), 0);
+    return clamp(0.45 + (power - job.diff) * 0.1 + (G.night.star === job.id ? 0.15 : 0), 0.05, 0.95);
+  }
+  function renderTown() {
+    const N = G.night;
+    const pins = N.jobs.map(id => {
+      const j = jobById(id);
+      return { key: 'j:' + id, loc: j.loc, kind: 'job', label: (N.star === id ? '★ ' : '') + D.LOCS[j.loc], badge: (N.assign[id] || []).length || '' };
+    });
+    pins.push({ key: 'meyhane', loc: 'meyhane', kind: 'recruit', label: 'Meyhane · Adam bul' });
+    pins.push({ key: 'karakol', loc: 'karakol', kind: 'bribe', label: 'Karakol · Zarf' });
+    pins.push({ key: 'dukkan', loc: 'dukkan', kind: 'home', label: 'Dükkân · Geceyi bitir' });
+    MD.Town.setPins(pins);
+    $('#tCrew').innerHTML = G.crew.map(c => {
+      const j = busyIn(c.id);
+      const st = c.jail ? 'Nezarette' : c.hurt ? 'Yaralı' : j ? D.LOCS[jobById(j).loc] : 'Boşta';
+      return `<span class="chip ${c.jail || c.hurt ? 'off' : j ? 'busy' : ''}"><b>${c.name}</b><small>${st}</small></span>`;
+    }).join('') || '<span class="chip off"><b>Ekip yok</b><small>Meyhaneye uğra</small></span>';
+    hud();
+  }
+  async function onPin(key) {
+    if (!G || G.phase !== 'night') return;
+    if (key.startsWith('j:')) return jobSheet(key.slice(2));
+    if (key === 'meyhane') return meyhaneSheet();
+    if (key === 'karakol') return karakolSheet();
+    if (key === 'dukkan') {
+      const any = Object.values(G.night.assign).some(a => a.length);
+      const v = await openSheet(`<h2 class="sh-title">Geceyi bitir</h2><p>${any ? 'Adamların işe çıkacak. Sabah sonuçlarını göreceksin.' : 'Bu gece kimse işe çıkmıyor. Dükkâna dönüp uyuyacaksın.'}</p>
+        <div class="acts"><button class="btn primary" data-s="go">${any ? 'İşleri başlat' : 'Uyu'}</button><button class="btn" data-s="close">Vazgeç</button></div>`);
+      closeSheet();
+      if (v === 'go') endNight();
+    }
+  }
+  async function jobSheet(id) {
+    const job = jobById(id), N = G.night;
+    while (true) {
+      const ids = N.assign[id] || [];
+      const p = chance(job, ids);
+      const keyN = { kas: 'Kas', sin: 'Sinsilik', akl: 'Kurnazlık' };
+      const reward = job.cash ? `${fmt(job.cash[0])}–${fmt(job.cash[1])} L nakit` : job.items ? `${job.items} parça mal` : `${D.RAR[job.item.rar[0]].n}${job.item.rar[1] !== job.item.rar[0] ? '/' + D.RAR[job.item.rar[1]].n : ''} mücevher/eser (çalıntı)`;
+      const html = `<h2 class="sh-title">${N.star === id ? '★ ' : ''}${job.t}</h2><p class="sh-sub">${D.LOCS[job.loc]}</p>
+        <p>${job.d}</p>
+        <div class="totals">
+          <div><span>Gereken</span><b>${job.key.map(k => keyN[k]).join(' + ')} · zorluk ${job.diff}</b></div>
+          <div><span>Ödül</span><b class="pos">${reward}${N.star === id ? ' · ×1,5' : ''}</b></div>
+          <div><span>Polis dikkati</span><b class="neg">+${job.heat}</b></div>
+          <div><span>Kişi</span><b>${ids.length}/${job.slots}</b></div>
+        </div>
+        <div class="chance"><span>Başarı şansı</span><div class="meter"><i style="--v:${Math.round(p * 100)}%"></i></div><b>%${Math.round(p * 100)}</b></div>
+        <div class="pick-list">${G.crew.map(c => {
+          const inThis = ids.includes(c.id), other = busyIn(c.id) && !inThis, off = c.hurt || c.jail;
+          const val = job.key.reduce((q, k) => q + c[k], 0);
+          return `<button class="pick ${inThis ? 'on' : ''}" data-s="c:${c.id}" ${off || other || (!inThis && ids.length >= job.slots) ? 'disabled' : ''}>
+            <b>${c.name}</b><small>${D.ROLES[c.role].n} · güç ${val}${off ? ' · ' + (c.jail ? 'nezarette' : 'yaralı') : other ? ' · başka işte' : ''}</small></button>`;
+        }).join('') || '<p class="muted">Ekibin yok. Meyhaneden adam bul.</p>'}</div>
+        <div class="acts"><button class="btn primary" data-s="close">Tamam</button></div>`;
+      const v = await openSheet(html, 'job-sheet');
+      if (v === 'close') break;
+      if (v.startsWith('c:')) {
+        const cid = v.slice(2);
+        const a = N.assign[id] = N.assign[id] || [];
+        const i = a.indexOf(cid);
+        if (i >= 0) a.splice(i, 1); else if (a.length < job.slots) a.push(cid);
+        MD.Audio.play('tap');
+      }
+    }
+    closeSheet(); save(); renderTown();
+  }
+  async function meyhaneSheet() {
+    while (true) {
+      const N = G.night;
+      const html = `<h2 class="sh-title">Madam Despina Meyhanesi</h2><p class="sh-sub">Rakı, duman ve iş arayan adamlar</p>
+        <div class="crew-list">${N.cands.map(cr => crewCardHTML(cr, { hire: true }) + `<button class="btn small primary" data-s="h:${cr.id}" ${G.cash >= cr.hire && G.crew.length < 5 ? '' : 'disabled'}>İşe al · ${money(cr.hire)}</button>`).join('') || '<p class="muted">Bu gece masada kimse kalmadı.</p>'}</div>
+        ${G.crew.length >= 5 ? '<p class="warn">Ekip dolu (5/5).</p>' : ''}
+        <div class="acts"><button class="btn" data-s="close">Çık</button></div>`;
+      const p = openSheet(html, 'ekip-sheet');
+      mountPortraits($('#sheet'), N.cands);
+      const v = await p;
+      if (v === 'close') break;
+      if (v.startsWith('h:')) {
+        const cr = N.cands.find(c => c.id === v.slice(2));
+        if (cr && G.cash >= cr.hire) { addCash(-cr.hire); G.crew.push(cr); N.cands = N.cands.filter(c => c !== cr); MD.Audio.play('coin'); save(); }
+      }
+    }
+    closeSheet(); renderTown();
+  }
+  async function karakolSheet() {
+    const opts = [[80, 10], [180, 25]];
+    const v = await openSheet(`<h2 class="sh-title">Beyoğlu Karakolu</h2><p class="sh-sub">Nöbetçi komiser yardımcısı esniyor</p>
+      <p>Bir zarf, bazı dosyaların tozlu rafta kalmasını sağlar. Polis dikkati şu an <b>${Math.round(G.heat)}</b>.</p>
+      <div class="acts">${opts.map(([c, h]) => `<button class="btn" data-s="b:${c}:${h}" ${G.cash >= c ? '' : 'disabled'}>Zarf · ${money(c)} → −${h}</button>`).join('')}<button class="btn primary" data-s="close">Vazgeç</button></div>`);
+    if (v.startsWith('b:')) { const [, c, h] = v.split(':'); addCash(-+c); G.heat = clamp(G.heat - +h, 0, 100); MD.Audio.play('pay'); save(); }
+    closeSheet(); renderTown();
+  }
+  async function endNight() {
+    const N = G.night, runs = [], rep = [];
+    for (const id of N.jobs) {
+      const ids = (N.assign[id] || []).filter(x => crewById(x));
+      if (!ids.length) continue;
+      const job = jobById(id), p = chance(job, ids), ok = Math.random() < p;
+      runs.push({ loc: job.loc, crew: ids.map(crewById), ok, job, ids });
+    }
+    if (runs.length) await MD.Town.runCrew(runs);
+    const mult = id => (N.star === id ? 1.5 : 1);
+    for (const r of runs) {
+      const j = r.job;
+      if (r.ok) {
+        G.stats.jobs++;
+        if (j.cash) { const v = Math.round(rnd(j.cash[0], j.cash[1]) * mult(j.id)); G.cash += v; rep.push(`<li class="pos"><b>${j.t}:</b> başarılı, +${fmt(v)} L</li>`); }
+        else {
+          const n = j.items || 1, got = [];
+          for (let i = 0; i < n; i++) {
+            const it = D.makeItem(j.items ? { rar: ri(j.rar[0], j.rar[1]), stolen: true } : { rar: ri(j.item.rar[0], j.item.rar[1]), cats: null, cat: j.item.cats ? pick(j.item.cats) : undefined, stolen: true, cond: ri(2, 3) });
+            it.k = { c: true, a: true, p: false }; it.paid = 0; it.day = G.day + 1;
+            G.inv.push(it); got.push(it.name);
+          }
+          rep.push(`<li class="pos"><b>${j.t}:</b> başarılı, depoya ${got.join(', ')} (çalıntı)</li>`);
+        }
+        G.heat = clamp(G.heat + j.heat, 0, 100);
+      } else {
+        G.heat = clamp(G.heat + Math.round(j.heat * 0.6), 0, 100);
+        const hasYan = r.ids.some(id => crewById(id).role === 'yankesici');
+        const hurt = [];
+        r.ids.forEach(id => {
+          const c = crewById(id);
+          if (Math.random() < (hasYan ? 0.06 : 0.12)) { c.jail = 3; hurt.push(c.name + ' nezarete düştü'); }
+          else if (Math.random() < 0.35) { c.hurt = 2; hurt.push(c.name + ' yaralandı'); }
+        });
+        rep.push(`<li class="neg"><b>${j.t}:</b> başarısız${hurt.length ? '. ' + hurt.join(', ') : ''}</li>`);
+      }
+    }
+    // sabah
+    G.day++; G.time = OPEN; G.phase = 'day'; G.night = null; G.tip = false; G.komiserToday = false; G.dayLog = [];
+    G.crew.forEach(c => { if (c.hurt) c.hurt--; if (c.jail) c.jail--; });
+    let wages = 0; const quit = [];
+    G.crew = G.crew.filter(c => {
+      if (c.jail) return true;
+      if (G.cash >= c.wage) { G.cash -= c.wage; wages += c.wage; return true; }
+      quit.push(c.name); return false;
+    });
+    const decay = 4 + 2 * G.crew.filter(c => c.role === 'kabadayi' && !c.jail).length;
+    G.heat = clamp(G.heat - decay, 0, 100);
+    G.trend = makeTrend();
+    save();
+    $('#town').hidden = true;
+    if (G.heat >= 100) return arrested();
+    await morningSheet(rep, wages, quit, decay);
+    dayLoop();
+  }
+  async function morningSheet(rep, wages, quit, decay) {
+    const d = new Date(1926, 4, 2 + G.day);
+    const due = DUE[G.paidN];
+    MD.Audio.play('page');
+    MD.Shop.setTime(OPEN); hud();
+    await openSheet(`<div class="paper">
+      <div class="paper-mast">Galata Postası</div>
+      <div class="paper-date">${d.getDate()} ${MON[d.getMonth()]} 1926 · ${DAYN[(G.day - 1) % 7]} · Fiyatı 5 kuruş</div>
+      <h2 class="paper-head">${pick(D.HEADLINES)}</h2>
+      <p class="paper-col"><b>Piyasa:</b> ${D.CATS[G.trend.up].g} rağbette, alıcılar %30 fazla veriyor. ${D.CATS[G.trend.down].g} ilgisi düştü (−%20).</p>
+    </div>
+    ${rep.length ? `<h3 class="sh-h3">Gece raporu</h3><ul class="report">${rep.join('')}</ul>` : ''}
+    <div class="totals">
+      ${wages ? `<div><span>Ekip yevmiyesi</span><b class="neg">−${fmt(wages)} L</b></div>` : ''}
+      <div><span>Polis dikkati</span><b>${Math.round(G.heat)} <small>(−${decay})</small></b></div>
+      <div><span>Kasa</span><b>${money(G.cash)}</b></div>
+      ${due && !G.endless ? `<div><span>Nuri Efendi</span><b>${money(due.amt)} · ${due.day - G.day <= 0 ? 'bu akşam' : (due.day - G.day) + ' gün sonra'}</b></div>` : ''}
+    </div>
+    ${quit.length ? `<p class="warn">Yevmiye ödenemedi, ayrıldılar: ${quit.join(', ')}</p>` : ''}
+    <div class="acts"><button class="btn primary" data-s="ok">Dükkânı aç</button></div>`, 'morning-sheet');
+    closeSheet();
+  }
+
+  /* ---------- son ---------- */
+  async function arrested() { await gameOver('Tutuklandın', 'Polis dikkati sınırı aştı. Komiser Cevdet kapıya dayandı ve defteri mühürledi.'); }
+  async function gameOver(title, text) {
+    G.over = title; clearSave();
+    running = false;
+    await openSheet(`<div class="end"><div class="seal red">${title.toUpperCase()}</div><p>${text}</p>
+      <div class="totals"><div><span>Gün</span><b>${G.day}</b></div><div><span>Alınan / satılan</span><b>${G.stats.bought} / ${G.stats.sold}</b></div><div><span>Toplam kâr</span><b>${fmt(G.stats.profit)} L</b></div></div>
+      <div class="acts"><button class="btn primary" data-s="new">Baştan başla</button></div></div>`, 'end-sheet');
+    location.reload();
+  }
+  async function victory() {
+    const v = await openSheet(`<div class="end"><div class="seal">DEFTER KAPANDI</div>
+      <p>Dayının borcunu ${G.day} günde ödedin. Galata'da adın artık saygıyla anılıyor.</p>
+      <div class="totals"><div><span>Kasa</span><b>${money(G.cash)}</b></div><div><span>Alınan / satılan</span><b>${G.stats.bought} / ${G.stats.sold}</b></div><div><span>Toplam kâr</span><b>${fmt(G.stats.profit)} L</b></div><div><span>Gece işleri</span><b>${G.stats.jobs}</b></div></div>
+      <div class="acts"><button class="btn primary" data-s="go">Ticarete devam et</button><button class="btn" data-s="new">Yeni oyun</button></div></div>`, 'end-sheet');
+    closeSheet();
+    if (v === 'new') { clearSave(); location.reload(); return; }
+    G.endless = true; save(); hud();
+  }
+
+  /* ---------- açılış ekranı ---------- */
+  function titleScreen() {
+    const t = $('#title');
+    const has = load();
+    $('#btnCont').hidden = !has;
+    const svg = $('#titleScene');
+    const a = new MD.Actor(Object.assign(NURI(), { acc: 'cigar' }));
+    a.place(220, 604, 0.98); a.setPose('cigar'); a.setEmotion('sly');
+    svg.querySelector('#titleActor').appendChild(a.el);
+    const start = async fresh => {
+      MD.Audio.unlock(); MD.Audio.play('stamp'); MD.haptic('medium');
+      t.classList.add('out');
+      setTimeout(() => { t.hidden = true; a.remove(); }, 500);
+      if (fresh) { clearSave(); newGame(); } else { G = has; }
+      hud();
+      if (G.phase === 'night') { MD.Shop.setTime(CLOSE); MD.Shop.setShelf(G.inv); goNight(); }
+      else dayLoop();
+    };
+    $('#btnNew').onclick = () => start(true);
+    $('#btnCont').onclick = () => start(false);
+  }
+
+  /* ---------- olaylar ---------- */
+  function wire() {
+    MD.Shop.init($('#scene'));
+    MD.Town.init($('#townMap'), onPin);
+    document.addEventListener('click', e => {
+      const b = e.target.closest('#panel [data-act]');
+      if (!b || b.disabled) return;
+      MD.Audio.play('tap'); MD.haptic('light');
+      if (typing) skipType = true;
+      if (actRes) { const r = actRes; actRes = null; r(b.getAttribute('data-act')); }
+      else queued = { id: panelId, act: b.getAttribute('data-act') };
+    });
+    $('#sheet').addEventListener('click', e => {
+      const b = e.target.closest('[data-s]');
+      if (b && !b.disabled) { MD.Audio.play('tap'); MD.haptic('light'); if (sheetRes) { const r = sheetRes; sheetRes = null; r(b.getAttribute('data-s')); } }
+    });
+    $('#stage').addEventListener('click', () => {
+      if (typing) skipType = true;
+      else if (tapWait) { const r = tapWait; tapWait = null; r(); }
+    });
+    document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => {
+      if (!G || !$('#sheet').hidden) return;
+      MD.Audio.play('page');
+      const k = b.getAttribute('data-open');
+      if (k === 'depo') depoSheet(); else if (k === 'ekip') ekipSheet(); else defterSheet();
+    }));
+    MD.Shop.ledger.addEventListener('click', () => { if (G && $('#sheet').hidden) { MD.Audio.play('page'); defterSheet(); } });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+  }
+
+  window.addEventListener('DOMContentLoaded', () => { wire(); titleScreen(); });
+  MD.Game = { get state() { return G; }, save };
+})();
