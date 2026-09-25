@@ -19,7 +19,8 @@
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
-html, body { height: 100%; margin: 0; overflow: hidden; background: var(--wood-0); }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: radial-gradient(90% 70% at 50% 40%, #2a1a0f, #0b0603 75%), var(--wood-0); }
 body {
   font-family: var(--f-body); color: var(--ink); font-size: 15px;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
@@ -30,6 +31,10 @@ button:focus-visible { outline: 2px solid var(--brass-2); outline-offset: 2px; }
 svg { display: block; }
 
 /* ---------- uygulama çerçevesi ---------- */
+#app, #town, #title { max-width: 520px; margin: 0 auto; }
+@media (min-width: 560px) {
+  #app, #town, #title { box-shadow: 0 0 0 1px rgba(196,154,69,.25), 0 0 60px rgba(0,0,0,.8); }
+}
 #app {
   position: fixed; inset: 0; display: flex; flex-direction: column;
   padding-top: env(safe-area-inset-top, 0px);

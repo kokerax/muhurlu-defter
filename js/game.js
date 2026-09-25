@@ -115,6 +115,8 @@
     el.textContent = '';
     sp.classList.remove('wait');
     if (c.actor) c.actor.talking = true;
+    let voEnd = 0;
+    if (o.vo) MD.VO.play(c.voice, o.vo).then(d => { if (d) voEnd = performance.now() + d * 1000; });
     skipType = false; typing = true;
     for (let i = 0; i < text.length; i++) {
       if (skipType) { el.textContent = text; break; }
@@ -123,7 +125,9 @@
       await sleep(ch === '.' || ch === '?' || ch === '!' ? 110 : ch === ',' ? 60 : 17);
     }
     typing = false;
-    if (c.actor) c.actor.talking = false;
+    await sleep(60);
+    const rem = voEnd - performance.now();
+    if (c.actor) { if (rem > 0) { const a = c.actor; setTimeout(() => { a.talking = false; }, rem); } else c.actor.talking = false; }
     if (o.wait) {
       sp.classList.add('wait');
       await new Promise(r => { tapWait = r; });
@@ -261,7 +265,8 @@
     sRejected: ['Peki... Başka kapıya.', 'Siz bilirsiniz. İyi günler.'],
     buy: {
       koleksiyoncu: ['Koleksiyonuma bir {n} arıyordum. {p} lira teklif ediyorum.', 'Şu {n}... İlginç parça. {p} lira veririm.'],
-      turist: ['Bonjour! Ah, {n}! Très joli. {p} lira, olur mu?', 'Good day! This {n} is lovely. {p} lira?'],
+      turist: ['Bonjour! Oh, très joli! Bu {n}... {p} lira, olur mu?', 'Oh là là, magnifique! {n} için {p} lira?'],
+      turistM: ['Good day! This is lovely. {n}... {p} lira, will that do?', 'I say, what a marvellous piece! {p} lira for the {n}?'],
       normal: ['İyi günler. Şu {n} gözüme çarptı. {p} lira veririm.', 'Hanıma hediye arıyorum. {n} için {p} lira?'],
       tuccar: ['{n} için {p} lira. Fazlasını vermem, ben de satacağım.', 'Toptan iş yaparım. {n}: {p} lira.'],
     },
@@ -289,7 +294,7 @@
     const spec = MD.People.randSpec();
     const name = spec.f ? pick(D.FIRST_F) : pick(D.FIRST_M);
     const pat = ri(2, 4);
-    return { kind: 'seller', type, name, role: 'Satıcı', tag: TAG.seller, spec, item: it, ask, min, pat, patMax: pat, tell: rnd(-0.06, 0.06), greet: fill(pick(L.sell[type]), { n: it.name, p: ask, name }) };
+    return { kind: 'seller', type, name, role: 'Satıcı', tag: TAG.seller, spec, voice: voiceFor(spec, name), item: it, ask, min, pat, patMax: pat, tell: rnd(-0.06, 0.06), greet: fill(pick(L.sell[type]), { n: it.name, p: ask, name }), greetVo: { saf: 's_saf', normal: 's_hi', uyanik: 's_uyanik', dolandirici: 's_dol', tekinsiz: 's_tek' }[type] };
   }
   function mkBuyer() {
     const type = wpick(['koleksiyoncu', 'turist', 'normal', 'tuccar'], [18, 16, 40, 26]);
@@ -305,15 +310,23 @@
     const offer = Math.max(1, round5(max * rnd(0.55, 0.78)));
     const tur = type === 'turist';
     const spec = MD.People.randSpec(tur ? { hat: Math.random() < 0.5 ? 'fedora' : 'none', coat: '#76674f' } : type === 'koleksiyoncu' ? { gls: pick(['monocle', 'round']), old: true } : {});
-    const name = tur ? (spec.f ? pick(['Madam Anjel', 'Miss Olive', 'Madam Matild']) : pick(['Mösyö Pierre', 'Mister Hollis', 'Herr Weber'])) : spec.f ? pick(D.FIRST_F) : pick(D.FIRST_M);
+    const name = tur ? (spec.f ? pick(['Madam Anjel', 'Mademoiselle Colette', 'Madam Matild']) : pick(['Mister Hollis', 'Lord Ashby', 'Mister Grant'])) : spec.f ? pick(D.FIRST_F.filter(n => !n.startsWith('Madam'))) : pick(D.FIRST_M.filter(n => !n.startsWith('Mösyö')));
     const role = { koleksiyoncu: 'Koleksiyoncu', turist: 'Seyyah', normal: 'Alıcı', tuccar: 'Tüccar' }[type];
     const pat = ri(2, 4);
-    return { kind: 'buyer', type, name, role, tag: TAG.buyer, spec, item: it, max, offer, pat, patMax: pat, tell: rnd(-0.06, 0.06), greet: fill(pick(L.buy[type]), { n: it.name, p: offer }) };
+    const gl = tur && !spec.f ? L.buy.turistM : L.buy[type];
+    const gi = Math.floor(Math.random() * gl.length);
+    return { kind: 'buyer', type, name, role, tag: TAG.buyer, spec, voice: tur ? (spec.f ? 'tf' : 'tm') : voiceFor(spec, name), tur, item: it, max, offer, pat, patMax: pat, tell: rnd(-0.06, 0.06), greet: fill(gl[gi], { n: it.name, p: offer }), greetVo: tur ? 't_hi-' + (gi + 1) : type === 'tuccar' ? 'b_tuc' : 'b_hi' };
+  }
+  function voiceFor(spec, name, recruit) {
+    if (spec.f) return spec.old && !recruit ? 'f2' : 'f1';
+    if (spec.old && !recruit) return 'm2';
+    let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) | 0;
+    return Math.abs(h) % 2 ? 'm1' : 'm3';
   }
   function nextCustomer() {
-    if (!G.komiserToday && G.heat >= 45 && Math.random() < (G.heat - 35) / 100) { G.komiserToday = true; return { kind: 'komiser', name: 'Komiser Cevdet', role: 'Beyoğlu Karakolu', tag: TAG.komiser, spec: KOMISER() }; }
-    if (G.crew.length < 5 && G.day > 1 && Math.random() < 0.06) { const cr = D.makeCrew(); return { kind: 'recruit', name: cr.name, role: D.ROLES[cr.role].n, tag: TAG.recruit, spec: cr.spec, crew: cr }; }
-    if (!G.tip && G.day > 1 && Math.random() < 0.05) return { kind: 'muhbir', name: 'Muhbir Şaban', role: 'Kulak', tag: TAG.muhbir, spec: MUHBIR() };
+    if (!G.komiserToday && G.heat >= 45 && Math.random() < (G.heat - 35) / 100) { G.komiserToday = true; return { kind: 'komiser', name: 'Komiser Cevdet', role: 'Beyoğlu Karakolu', tag: TAG.komiser, spec: KOMISER(), voice: 'komiser' }; }
+    if (G.crew.length < 5 && G.day > 1 && Math.random() < 0.06) { const cr = D.makeCrew(); return { kind: 'recruit', name: cr.name, role: D.ROLES[cr.role].n, tag: TAG.recruit, spec: cr.spec, voice: voiceFor(cr.spec, cr.name, true), crew: cr }; }
+    if (!G.tip && G.day > 1 && Math.random() < 0.05) return { kind: 'muhbir', name: 'Muhbir Şaban', role: 'Kulak', tag: TAG.muhbir, spec: MUHBIR(), voice: 'muhbir' };
     if (G.inv.length === 0 || Math.random() < (G.inv.length > 7 ? 0.35 : 0.52)) return mkSeller();
     return mkBuyer();
   }
@@ -433,7 +446,7 @@
     stamp('ALINDI', 'ink');
     MD.Shop.cash(price, false);
     await tick(5);
-    await say(c, pick(L.sAccept));
+    await say(c, pick(L.sAccept), { vo: 'accept' });
     await MD.Shop.takeItem('shelf');
     MD.Shop.setShelf(G.inv);
     await leave(c);
@@ -451,7 +464,7 @@
     if (it.stolen) addHeat(6);
     if (it.fake) addHeat(2);
     await tick(5);
-    await say(c, pick(L.bAccept));
+    await say(c, c.tur ? (c.spec.f ? 'Merci! Magnifique.' : 'Splendid! We have a deal.') : pick(L.bAccept), { vo: c.tur ? 't_accept' : 'baccept' });
     await MD.Shop.takeItem('up');
     MD.Shop.setShelf(G.inv);
     await leave(c);
@@ -465,7 +478,7 @@
     MD.Shop.showItem(it);
     await tick(10);
     panel(dealHTML(c), 'deal');
-    await say(c, c.greet);
+    await say(c, c.greet, { vo: c.greetVo });
     c.actor.setPose('counter');
     while (true) {
       panel(dealHTML(c), 'deal');
@@ -479,25 +492,25 @@
         if (t === 'a' && it.fake && c.type === 'dolandirici') {
           c.actor.setEmotion('surprised', 1400); c.actor.shake();
           await sleep(500);
-          if (Math.random() < 0.45) { await say(c, 'Eh... Benim acelem vardı zaten. Hoşça kalın!'); await MD.Shop.takeItem('up'); await leave(c); return; }
+          if (Math.random() < 0.45) { await say(c, 'Eh... Benim acelem vardı zaten. Hoşça kalın!', { vo: 'fake_run' }); await MD.Shop.takeItem('up'); await leave(c); return; }
           c.ask = Math.max(3, round5(D.authVal(it) * rnd(0.12, 0.25))); c.min = Math.max(2, round5(c.ask * 0.7));
-          await say(c, `Sahte mi? Olamaz... Ben de öyle aldım! Peki, ${fmt(c.ask)} lira olsun.`);
+          await say(c, `Sahte mi? Olamaz... Ben de öyle aldım! Peki, ${fmt(c.ask)} lira olsun.`, { vo: 'fake_exposed' });
         } else if (t === 'c' && it.c >= 3) c.actor.setEmotion('sly', 1200);
         continue;
       }
       if (act === 'accept') { await doBuy(c, c.ask); return; }
-      if (act === 'reject') { c.actor.setEmotion('sad'); await say(c, pick(L.sRejected)); await MD.Shop.takeItem('up'); await leave(c); return; }
+      if (act === 'reject') { c.actor.setEmotion('sad'); await say(c, pick(L.sRejected), { vo: 'rejected' }); await MD.Shop.takeItem('up'); await leave(c); return; }
       if (act === 'haggle') {
         const o = await haggle(c);
         if (o == null) continue;
         await tick(10);
         const r = respond(c, o);
         if (r.type === 'accept') { await doBuy(c, r.price); return; }
-        if (r.type === 'leave') { c.actor.setEmotion('angry'); c.actor.shake(); renderPatience(c); await say(c, pick(L.sLeave)); await MD.Shop.takeItem('up'); await leave(c); return; }
+        if (r.type === 'leave') { c.actor.setEmotion('angry'); c.actor.shake(); renderPatience(c); await say(c, pick(L.sLeave), { vo: 'leave' }); await MD.Shop.takeItem('up'); await leave(c); return; }
         c.actor.setEmotion(r.insult ? 'angry' : 'annoyed', 1600);
         if (r.insult) c.actor.shake(); else c.actor.setPose('shrug');
         panel(dealHTML(c), 'deal');
-        await say(c, fill(pick(r.insult ? L.sInsult : L.sCounter), { p: r.price }));
+        await say(c, fill(pick(r.insult ? L.sInsult : L.sCounter), { p: r.price }), { vo: r.insult ? 'insult' : 'counter' });
         c.actor.setPose('counter'); c.actor.setEmotion('neutral');
       }
     }
@@ -513,30 +526,30 @@
     c.actor.setPose('counter'); c.actor.lookT = 0;
     if (c.type === 'koleksiyoncu' && it.fake && !hasPerk('kalpazan') && Math.random() < 0.85) {
       c.actor.setEmotion('angry'); c.actor.shake();
-      await say(c, `Bu ${it.name} sahte! Beni kandıracağını mı sandın? Rezalet!`, { wait: false });
+      await say(c, `Bu ${it.name} sahte! Beni kandıracağını mı sandın? Rezalet!`, { vo: 'fake_angry' });
       addHeat(3);
       await MD.Shop.takeItem('shelf');
       await leave(c);
       return;
     }
     panel(dealHTML(c), 'deal');
-    await say(c, c.greet);
+    await say(c, c.greet, { vo: c.greetVo });
     while (true) {
       panel(dealHTML(c), 'deal');
       const act = await waitAct();
       if (act === 'accept') { await doSell(c, c.offer); return; }
-      if (act === 'reject') { c.actor.setEmotion('sad'); await say(c, pick(L.bRejected)); await MD.Shop.takeItem('shelf'); await leave(c); return; }
+      if (act === 'reject') { c.actor.setEmotion('sad'); await say(c, c.tur ? (c.spec.f ? 'Non, non. Au revoir.' : 'No, no. Good day to you.') : pick(L.bRejected), { vo: c.tur ? 't_leave' : 'brejected' }); await MD.Shop.takeItem('shelf'); await leave(c); return; }
       if (act === 'haggle') {
         const o = await haggle(c);
         if (o == null) continue;
         await tick(10);
         const r = respond(c, o);
         if (r.type === 'accept') { await doSell(c, r.price); return; }
-        if (r.type === 'leave') { c.actor.setEmotion('angry'); c.actor.shake(); renderPatience(c); await say(c, pick(L.bLeave)); await MD.Shop.takeItem('shelf'); await leave(c); return; }
+        if (r.type === 'leave') { c.actor.setEmotion('angry'); c.actor.shake(); renderPatience(c); await say(c, c.tur ? (c.spec.f ? 'Non, non. Au revoir.' : 'No, no. Good day to you.') : pick(L.bLeave), { vo: c.tur ? 't_leave' : 'leave' }); await MD.Shop.takeItem('shelf'); await leave(c); return; }
         c.actor.setEmotion(r.insult ? 'angry' : 'think', 1600);
         if (r.insult) c.actor.shake(); else c.actor.setPose('think');
         panel(dealHTML(c), 'deal');
-        await say(c, fill(pick(r.insult ? L.bInsult : L.bCounter), { p: r.price }));
+        await say(c, c.tur ? fill(c.spec.f ? "Hmm... d'accord, un peu plus. {p} lira." : 'Hmm... very well, a little more. {p} lira.', { p: r.price }) : fill(pick(r.insult ? L.bInsult : L.bCounter), { p: r.price }), { vo: c.tur ? 't_counter' : r.insult ? 'binsult' : 'bcounter' });
         c.actor.setPose('counter'); c.actor.setEmotion('neutral');
       }
     }
@@ -569,37 +582,38 @@
 
   async function recruitVisit(c) {
     await enter(c);
-    await say(c, pick(['Selam patron. Dayının adamlarını tanırdım. İş var mı?', 'Kolum güçlü, dilim kısa. İş arıyorum.', 'Duydum ki dükkânın gece de açıkmış. Bana yer var mı?']));
+    const hi = ri(0, 1);
+    await say(c, ['Selam patron. Dayının adamlarını tanırdım. İş var mı?', 'Kolum güçlü, dilim kısa. İş arıyorum.'][hi], { vo: 'r_hi-' + (hi + 1) });
     panel(crewCardHTML(c.crew, { hire: true }) + `<div class="acts"><button class="btn primary" data-act="hire" ${G.cash >= c.crew.hire ? '' : 'disabled'}>İşe al · ${money(c.crew.hire)}</button><button class="btn" data-act="no">Gerek yok</button></div>`, 'deal');
     mountPortraits($('#panel'), [c.crew]);
     const a = await waitAct();
     clearPortraits();
-    if (a === 'hire') { addCash(-c.crew.hire); G.crew.push(c.crew); c.actor.setEmotion('delight', 1500); c.actor.hop(); await say(c, 'Pişman olmayacaksın patron. Akşam görüşürüz.'); }
-    else { c.actor.setEmotion('sad'); await say(c, 'Peki. Fikrin değişirse meyhanede bulursun beni.'); }
+    if (a === 'hire') { addCash(-c.crew.hire); G.crew.push(c.crew); c.actor.setEmotion('delight', 1500); c.actor.hop(); await say(c, 'Pişman olmayacaksın patron. Akşam görüşürüz.', { vo: 'r_yes' }); }
+    else { c.actor.setEmotion('sad'); await say(c, 'Peki. Fikrin değişirse meyhanede bulursun beni.', { vo: 'r_no' }); }
     await leave(c);
   }
   async function muhbirVisit(c) {
     await enter(c);
     c.actor.setEmotion('sly');
-    await say(c, 'Psst. Otuz lira ver, bu gece işine yarayacak bir fısıltı söyleyeyim.');
+    await say(c, 'Psst. Otuz lira ver, bu gece işine yarayacak bir fısıltı söyleyeyim.', { vo: 'offer' });
     panel(`<div class="note">Muhbir ipucu, bu gecenin işlerinden birinde başarı şansını ve ödülü artırır.</div><div class="acts"><button class="btn primary" data-act="pay" ${G.cash >= 30 ? '' : 'disabled'}>Öde · 30 L</button><button class="btn" data-act="no">Defol</button></div>`, 'deal');
     const a = await waitAct();
-    if (a === 'pay') { addCash(-30); G.tip = true; await say(c, 'Bu gece bekçiler vardiya değiştiriyor. Haritada yıldızlı işe bak.'); }
-    else { c.actor.setEmotion('annoyed'); await say(c, 'Sen bilirsin. Kulak bedava değil.'); }
+    if (a === 'pay') { addCash(-30); G.tip = true; await say(c, 'Bu gece bekçiler vardiya değiştiriyor. Haritada yıldızlı işe bak.', { vo: 'paid' }); }
+    else { c.actor.setEmotion('annoyed'); await say(c, 'Sen bilirsin. Kulak bedava değil.', { vo: 'no' }); }
     await leave(c);
   }
   async function komiserVisit(c) {
     await enter(c);
     c.actor.setPose('cross'); c.actor.setEmotion('annoyed');
     const stolen = G.inv.filter(x => x.stolen);
-    await say(c, stolen.length ? 'Duyduğuma göre dükkânında kaynağı belirsiz mallar varmış.' : 'Şöyle bir bakayım dedim. Mahallede adın çok geçiyor.');
+    await say(c, stolen.length ? 'Duyduğuma göre dükkânında kaynağı belirsiz mallar varmış.' : 'Şöyle bir bakayım dedim. Mahallede adın çok geçiyor.', { vo: stolen.length ? 'sus-1' : 'sus-2' });
     const bribe = round5(40 + G.heat * 2.5);
     panel(`<div class="note">Polis dikkati: <b>${Math.round(G.heat)}</b>. ${stolen.length ? `Depoda <b>${stolen.length}</b> çalıntı mal var.` : 'Depoda çalıntı mal yok.'}</div>
       <div class="acts"><button class="btn" data-act="bribe" ${G.cash >= bribe ? '' : 'disabled'}>Rüşvet ver · ${money(bribe)}</button><button class="btn primary" data-act="search">Buyurun, arayın</button></div>`, 'deal');
     const a = await waitAct();
     if (a === 'bribe') {
       addCash(-bribe); G.heat = clamp(G.heat - 15, 0, 100); hud();
-      c.actor.setEmotion('sly'); await say(c, 'Görmedim say. Ama bir dahakine bu kadar anlayışlı olmam.');
+      c.actor.setEmotion('sly'); await say(c, 'Görmedim say. Ama bir dahakine bu kadar anlayışlı olmam.', { vo: 'bribe' });
     } else {
       c.actor.setPose('point');
       await tick(20);
@@ -610,30 +624,30 @@
         addCash(-fine); G.heat = clamp(G.heat - 10, 0, 100); hud();
         MD.Shop.setShelf(G.inv);
         c.actor.setEmotion('angry');
-        await say(c, `${found.map(x => x.name).join(', ')}... Çalıntı! El koyuyorum. Cezası da ${fmt(fine)} lira.`, { wait: true });
+        await say(c, `${found.map(x => x.name).join(', ')}... Çalıntı! El koyuyorum. Cezası da ${fmt(fine)} lira.`, { wait: true, vo: 'found' });
       } else {
         G.heat = clamp(G.heat - 8, 0, 100); hud();
         c.actor.setEmotion('think');
-        await say(c, 'Hmm. Temiz görünüyor... Şimdilik.');
+        await say(c, 'Hmm. Temiz görünüyor... Şimdilik.', { vo: 'clean' });
       }
     }
     await leave(c);
   }
 
   /* ---------- tefeci ---------- */
-  function nuri() { return { kind: 'lender', name: 'Nuri Efendi', role: 'Tefeci', tag: TAG.lender, spec: NURI() }; }
+  function nuri() { return { kind: 'lender', name: 'Nuri Efendi', role: 'Tefeci', tag: TAG.lender, spec: NURI(), voice: 'nuri' }; }
   async function introScene() {
     const c = nuri();
     panel(`<div class="note center">Kapının zili çalıyor…</div>`, 'idle');
     await enter(c);
     c.actor.setEmotion('think');
-    await say(c, 'Demek dükkânın yeni sahibi sensin. Başın sağ olsun, Rıza rahmetli iyi adamdı.', { wait: true });
+    await say(c, 'Demek dükkânın yeni sahibi sensin. Başın sağ olsun, Rıza rahmetli iyi adamdı.', { wait: true, vo: 'intro-1' });
     c.actor.setEmotion('sly'); c.actor.setPose('present');
-    await say(c, 'Ama bana borcunu ödemeden gitti. Defterde yazılı: tam 5.250 lira.', { wait: true });
+    await say(c, 'Ama bana borcunu ödemeden gitti. Defterde yazılı: tam 5.250 lira.', { wait: true, vo: 'intro-2' });
     c.actor.setPose('counter'); c.actor.setEmotion('annoyed');
-    await say(c, 'Üç taksit. Her pazar akşamı gelirim: 1.000, 1.750, 2.500. Gecikirsen dükkândaki mallar benim olur.', { wait: true });
+    await say(c, 'Üç taksit. Her pazar akşamı gelirim: 1.000, 1.750, 2.500. Gecikirsen dükkândaki mallar benim olur.', { wait: true, vo: 'intro-3' });
     c.actor.setEmotion('happy');
-    await say(c, 'Ucuza al, pahalıya sat, ne aldığını bil. Hüsnü de sana kalsın; gece işlerine yarar. Hadi, kolay gelsin.', { wait: true });
+    await say(c, 'Ucuza al, pahalıya sat, ne aldığını bil. Hüsnü de sana kalsın, gece işlerine yarar. Hadi, kolay gelsin.', { wait: true, vo: 'intro-4' });
     await leave(c);
   }
   async function lenderVisit() {
@@ -641,7 +655,7 @@
     const c = nuri();
     await enter(c);
     c.actor.setEmotion('sly');
-    await say(c, `Pazar akşamı, evlat. Defter açık: ${fmt(due.amt)} lira.`);
+    await say(c, `Pazar akşamı, evlat. Defter açık: ${fmt(due.amt)} lira.`, { vo: 'due-' + G.paidN });
     const can = G.cash >= due.amt;
     panel(`<div class="note">Taksit ${G.paidN + 1}/3 · <b>${money(due.amt)}</b> · Kasa <b>${money(G.cash)}</b></div>
       <div class="acts">${can ? `<button class="btn primary" data-act="pay">Öde · ${money(due.amt)}</button>` : `<button class="btn danger" data-act="short">Kasadakini ver · ${money(G.cash)}</button>`}</div>
@@ -653,12 +667,12 @@
       panel(`<div class="seal-wrap"><div class="seal">ÖDENDİ</div><p>${G.paidN}. taksit kapandı.</p></div>`, 'idle');
       c.actor.setEmotion('happy'); c.actor.nod();
       if (G.paidN >= DUE.length) {
-        await say(c, 'Defter kapandı. Dayından iyi tüccar çıktın, evlat. Galata artık senin.', { wait: true });
+        await say(c, 'Defter kapandı. Dayından iyi tüccar çıktın, evlat. Galata artık senin.', { wait: true, vo: 'paid-end' });
         await leave(c);
         await victory();
         return;
       }
-      await say(c, `Aferin. Gelecek pazar ${fmt(DUE[G.paidN].amt)} lira. Unutma.`, { wait: true });
+      await say(c, `Aferin. Gelecek pazar ${fmt(DUE[G.paidN].amt)} lira. Unutma.`, { wait: true, vo: 'paid-' + G.paidN });
     } else {
       let rest = due.amt - G.cash;
       if (G.cash > 0) addCash(-G.cash);
@@ -669,14 +683,14 @@
       MD.Shop.setShelf(G.inv);
       if (rest > 0) {
         c.actor.setEmotion('angry'); c.actor.shake();
-        await say(c, 'Kasa boş, raflar boş. Bu dükkân artık benim. Anahtarları bırak.', { wait: true });
+        await say(c, 'Kasa boş, raflar boş. Bu dükkân artık benim. Anahtarları bırak.', { wait: true, vo: 'lose' });
         await leave(c);
         await gameOver('Dükkân elden gitti', 'Nuri Efendi taksiti tahsil edemedi ve dükkâna el koydu.');
         return;
       }
       G.paidN++;
       c.actor.setEmotion('annoyed');
-      await say(c, `${taken.length} parça mal aldım: ${taken.map(x => x.name).join(', ')}. Bir dahakine nakit isterim.`, { wait: true });
+      await say(c, `${taken.length} parça mal aldım: ${taken.map(x => x.name).join(', ')}. Bir dahakine nakit isterim.`, { wait: true, vo: 'seize' });
       if (G.paidN >= DUE.length) { await leave(c); await victory(); return; }
     }
     await leave(c);

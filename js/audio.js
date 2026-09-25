@@ -49,6 +49,44 @@
     get on() { return on; },
     set on(v) { on = v; try { localStorage.setItem('md_sound', v ? '1' : '0'); } catch (e) { } },
   };
+  /* Karakter sesleri (Chatterbox ile önceden üretilmiş mp3'ler, vo/manifest.js listeler) */
+  const cache = {};
+  let cur = null;
+  function variants(voice, base) {
+    const m = MD.VO_MANIFEST;
+    if (!m || !m[voice]) return [];
+    return m[voice].filter(k => k === base || k.startsWith(base + '-'));
+  }
+  function decode(url) {
+    if (!cache[url]) {
+      const c = ac();
+      cache[url] = fetch(url).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .then(b => new Promise((res, rej) => c.decodeAudioData(b, res, rej)));
+      cache[url].catch(() => { delete cache[url]; });
+    }
+    return cache[url];
+  }
+  MD.VO = {
+    async play(voice, base) {
+      if (!on || !voice || !base) return 0;
+      const ks = variants(voice, base);
+      if (!ks.length) return 0;
+      const k = ks[Math.floor(Math.random() * ks.length)];
+      try {
+        const c = ac(); if (!c) return 0;
+        const buf = await decode(`vo/${voice}/${k}.mp3`);
+        MD.VO.stop();
+        const s = c.createBufferSource(); s.buffer = buf;
+        const g = c.createGain(); g.gain.value = 1.1;
+        s.connect(g).connect(c.destination); s.start();
+        cur = s;
+        return buf.duration;
+      } catch (e) { return 0; }
+    },
+    stop() { if (cur) { try { cur.stop(); } catch (e) { } cur = null; } },
+    has: (voice, base) => variants(voice, base).length > 0,
+  };
+
   MD.haptic = function (kind) {
     try { window.webkit.messageHandlers.haptic.postMessage(kind); } catch (e) { }
   };
