@@ -402,7 +402,7 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 13px; backgrou
   color: #fff; background: #3d6a34; border: 1.5px solid var(--ink); animation: stampIn .3s both; pointer-events: none; }
 .flaw.bad { background: #8e2a22; }
 .flaw::after { content: ""; position: absolute; left: 50%; top: 100%; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: inherit; border: 1.5px solid var(--ink); transform: translateY(6px); }
-.rub-item { position: absolute; left: 25%; top: 6%; width: 50%; transition: transform .05s; pointer-events: none; }
+.rub-item { position: absolute; left: 25%; top: 6%; width: 50%; transition: transform .05s; pointer-events: none; z-index: 2; filter: drop-shadow(0 6px 6px rgba(0,0,0,.5)); }
 .rub-stone { position: absolute; left: 6%; right: 6%; bottom: 8%; width: 88%; height: 26%; }
 .cat-book { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px;
   background: linear-gradient(90deg, #efe2bf 49.5%, #b9a07a 50%, #efe2bf 50.5%); }

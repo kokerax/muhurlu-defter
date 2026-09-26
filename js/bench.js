@@ -37,22 +37,25 @@
       <div class="acts"><button class="btn" data-b="skip">Hızlı bak <small>(+5 dk)</small></button></div>`;
   }
   function art(it, extra = '') { return `<svg viewBox="0 0 100 100" class="bench-art" ${extra}>${MD.Art.inner(it)}</svg>`; }
-  function wire(res, baseMin, t0) {
-    root.querySelector('[data-b="skip"]').addEventListener('click', () => { MD.Audio.play('tap'); done(res, baseMin + 5); });
+  function wire(end, baseMin) {
+    root.querySelector('[data-b="skip"]').addEventListener('click', () => { MD.Audio.play('tap'); end(baseMin + 5); });
   }
-  let finished = false;
-  function done(res, min) {
-    if (finished) return;
-    finished = true;
-    setTimeout(close, 450);
-    res(Math.max(3, Math.round(min)));
+  function ender(res) {
+    const st = { fin: false };
+    st.end = min => {
+      if (st.fin) return;
+      st.fin = true;
+      setTimeout(close, 450);
+      res(Math.max(3, Math.round(min)));
+    };
+    return st;
   }
   const pt = (e, el) => { const r = el.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, r]; };
 
   /* --- büyüteç: kusur/damga ara --- */
   function lens(it, baseMin) {
     return new Promise(res => {
-      finished = false;
+      const S = ender(res);
       const spots = [];
       const flaws = shuffle(FLAWS[it.c]);
       for (let i = 0; i < 3; i++) {
@@ -73,12 +76,12 @@
         inner.style.width = r.width * 2 + 'px'; inner.style.height = r.height * 2 + 'px';
         inner.style.transform = `translate(${-(x * r.width * 2 - R)}px, ${-(y * r.height * 2 - R)}px)`;
       };
-      const move = e => { const [x, y, r] = pt(e, stage); pos = [clamp(x, 0, 1), clamp(y, 0, 1)]; place(pos[0], pos[1], r); L.classList.add('on'); };
+      const move = e => { if (S.fin) return; const [x, y, r] = pt(e, stage); pos = [clamp(x, 0, 1), clamp(y, 0, 1)]; place(pos[0], pos[1], r); L.classList.add('on'); };
       stage.addEventListener('pointerdown', e => { stage.setPointerCapture(e.pointerId); move(e); });
       stage.addEventListener('pointermove', move);
-      wire(res, baseMin, t0);
+      wire(S.end, baseMin);
       const loop = now => {
-        if (finished) return;
+        if (S.fin) return;
         const dt = (now - last) / 1000; last = now;
         if (pos) spots.forEach(s => {
           if (s.found) return;
@@ -94,7 +97,7 @@
         root.querySelector('#bBar').style.width = (n / 3 * 100) + '%';
         if (n === 3 || el > 9) {
           root.querySelector('#bHint').textContent = n === 3 ? 'Üç izi de buldun.' : 'Yeterince baktın.';
-          return done(res, baseMin * (0.5 + Math.min(1, el / 9) * 0.5) + (n < 3 ? 3 : 0));
+          return S.end(baseMin * (0.5 + Math.min(1, el / 9) * 0.5) + (n < 3 ? 3 : 0));
         }
         requestAnimationFrame(loop);
       };
@@ -105,7 +108,7 @@
   /* --- mihenk taşı / tiner bezi: sürt, izin rengini oku --- */
   function rub(it, baseMin) {
     return new Promise(res => {
-      finished = false;
+      const S = ender(res);
       const metal = isMetal(it);
       const col = it.fake ? (metal ? '#7d8a5a' : '#c9d6e0') : (metal ? '#e2b64c' : '#8a5a2a');
       overlay(frame(metal ? 'Mihenk Taşı' : 'Tiner Bezi',
@@ -121,6 +124,7 @@
       const t0 = performance.now();
       let lastX = null, dist = 0, pts = [], dir = 0, passes = 0;
       const move = e => {
+        if (S.fin) return;
         const [x, y, r] = pt(e, stage);
         item.style.transform = `translate(${(x - 0.5) * r.width}px, ${(clamp(y, 0.2, 0.85) - 0.35) * r.height}px) rotate(${(x - 0.5) * 20}deg)`;
         if (lastX != null && y > 0.45) {
@@ -136,19 +140,19 @@
         root.querySelector('#bBar').style.width = p * 100 + '%';
         if (p >= 1) {
           root.querySelector('#bHint').textContent = it.fake ? (metal ? 'İz soluk ve yeşilimsi.' : 'Taze boya bulaştı.') : (metal ? 'İz parlak altın sarısı.' : 'Alttan eski boya çıktı.');
-          done(res, baseMin * (0.5 + Math.min(1, (performance.now() - t0) / 7000) * 0.5));
+          S.end(baseMin * (0.5 + Math.min(1, (performance.now() - t0) / 7000) * 0.5));
         }
       };
       stage.addEventListener('pointerdown', e => { stage.setPointerCapture(e.pointerId); lastX = null; move(e); });
       stage.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') move(e); });
-      wire(res, baseMin, t0);
+      wire(S.end, baseMin);
     });
   }
 
   /* --- katalog: doğru kaydı bul --- */
   function catalog(it, baseMin) {
     return new Promise(res => {
-      finished = false;
+      const S = ender(res);
       const C = D.CATS[it.cat];
       const others = shuffle(Object.keys(D.CATS).filter(k => k !== it.cat)).slice(0, 2).map(k => ({ cat: k, vi: 0, r: it.r, c: 2 }));
       const same = C.v.length > 1 ? [{ cat: it.cat, vi: (it.vi + 1) % C.v.length, r: it.r, c: 2 }] : [];
@@ -162,18 +166,19 @@
       const t0 = performance.now();
       let extra = 0;
       root.querySelectorAll('.cat-entry').forEach(b => b.addEventListener('click', () => {
+        if (S.fin) return;
         const x = entries[+b.dataset.i];
         if (x.ok) {
           b.classList.add('right'); MD.Audio.play('good');
           root.querySelector('#bBar').style.width = '100%';
           root.querySelector('#bHint').innerHTML = `Kayıt bulundu: piyasa değeri <b>${e[0] === e[1] ? e[0] : e[0] + '–' + e[1]} L</b>`;
-          done(res, baseMin * (0.5 + Math.min(1, (performance.now() - t0) / 6000) * 0.5) + extra);
+          S.end(baseMin * (0.5 + Math.min(1, (performance.now() - t0) / 6000) * 0.5) + extra);
         } else {
           b.classList.add('wrong'); MD.Audio.play('bad'); MD.haptic('error'); extra += 3;
           root.querySelector('#bHint').textContent = 'Bu değil. Sayfayı çevirmek 3 dakika sürdü.';
         }
       }));
-      wire(res, baseMin, t0);
+      wire(S.end, baseMin);
     });
   }
 
