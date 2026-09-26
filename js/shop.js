@@ -140,6 +140,7 @@
     </g>
 
     <g id="dust"></g>
+    <g id="upBack"></g>
     <g id="actors"></g>
 
     <!-- lamba -->
@@ -170,6 +171,7 @@
         <path d="M146,324 C150,300 162,286 176,280 C168,292 160,304 148,324Z" fill="#efe6d2" stroke="${INK}" stroke-width="1"/></g>
       <rect x="166" y="308" width="112" height="40" rx="4" fill="#2f3d2c" stroke="${INK}" stroke-width="1.5"/>
       <rect x="171" y="312" width="102" height="32" rx="2" fill="none" stroke="#c49a45" stroke-width=".8" stroke-dasharray="3 2" opacity=".7"/>
+      <g id="upFront"></g>
       <g id="counterItem"></g>
       <g id="cash" opacity="0"></g>
       <g id="svcBell" class="tap">
@@ -179,7 +181,7 @@
         <path d="M394,330 C394,324 398,320 402,319" fill="none" stroke="#fff" stroke-width="1.5" opacity=".6"/>
       </g>
     </g>`;
-    ['sky0', 'sky1', 'winSun', 'streetWin', 'shaft', 'door', 'bell', 'sign', 'shelfItems', 'clockH', 'clockM', 'dust', 'actors', 'lampGlow', 'lamp', 'counterItem', 'cash', 'curtL', 'curtR', 'ledger', 'svcBell', 'bulb']
+    ['sky0', 'sky1', 'winSun', 'streetWin', 'shaft', 'door', 'bell', 'sign', 'shelfItems', 'clockH', 'clockM', 'dust', 'actors', 'lampGlow', 'lamp', 'counterItem', 'cash', 'curtL', 'curtR', 'ledger', 'svcBell', 'bulb', 'upBack', 'upFront']
       .forEach(id => L[id] = svg.querySelector('#' + id));
     for (let i = 0; i < 18; i++) {
       const c = document.createElementNS(NS, 'circle');
@@ -291,10 +293,61 @@
     });
   }
 
+  let gramRec = null, notes = [], upg = {};
+  function setUpgrades(u) {
+    upg = Object.assign({}, u || {});
+    const v = upg.vitrin || 0;
+    let back = '';
+    if (v) back += `<g id="vitrin">
+      <rect x="352" y="188" width="80" height="116" fill="#3a2416" stroke="${INK}" stroke-width="2"/>
+      <rect x="358" y="194" width="68" height="104" fill="#9fc0c8" opacity=".28"/>
+      <path d="M358,240 H426 M358,272 H426" stroke="#6e4727" stroke-width="3"/>
+      <circle cx="376" cy="232" r="6" fill="#d6aa4c" stroke="${INK}"/><rect x="398" y="222" width="12" height="16" fill="#2c5fa8" stroke="${INK}"/>
+      <path d="M372,266 L380,254 L388,266Z" fill="#b3202c" stroke="${INK}"/><circle cx="408" cy="262" r="5" fill="#f3ecdf" stroke="${INK}"/>
+      <path d="M362,198 L380,198 L364,236Z" fill="#fff" opacity=".25"/>
+      ${v >= 2 ? `<rect x="352" y="186" width="80" height="6" fill="#c49a45" stroke="${INK}"/><rect x="352" y="300" width="80" height="4" fill="#c49a45"/>` : ''}
+      ${v >= 3 ? `<circle cx="392" cy="210" r="30" fill="url(#lampG)" opacity=".8"/>` : ''}
+    </g>`;
+    if (upg.kasa) back += `<g id="kasa"><rect x="114" y="258" width="38" height="40" rx="3" fill="#3d4148" stroke="${INK}" stroke-width="2"/>
+      <rect x="119" y="263" width="28" height="30" rx="2" fill="none" stroke="#6b7078" stroke-width="1.5"/>
+      <circle cx="133" cy="278" r="6" fill="#c49a45" stroke="${INK}"/><path d="M133,273 V278 L136,280" stroke="${INK}" stroke-width="1.2" fill="none"/></g>`;
+    if (upg.tabela) back += `<g id="tabela"><rect x="276" y="44" width="124" height="34" rx="4" fill="#1d130c" opacity=".55"/>
+      <text x="338" y="60" text-anchor="middle" class="svg-tabela">MÜHÜRLÜ DEFTER</text>
+      <text x="338" y="72" text-anchor="middle" class="svg-tabela2">ANTİKA · 1926</text></g>`;
+    L.upBack.innerHTML = back;
+    L.upFront.innerHTML = upg.gramofon ? `<g id="gram">
+      <rect x="342" y="324" width="44" height="20" fill="#5a3a22" stroke="${INK}" stroke-width="1.5"/>
+      <ellipse cx="364" cy="323" rx="20" ry="4.5" fill="#1c1410" stroke="${INK}"/>
+      <g id="gramRec"><path d="M350,323 L378,323" stroke="#6b5a40" stroke-width="1"/></g>
+      <path d="M372,321 L366,314" stroke="#c49a45" stroke-width="2.5"/>
+      <path d="M366,316 C360,300 350,290 340,282 L322,268 C316,276 316,290 326,296 L336,294 C346,302 356,310 362,318Z" fill="#c49a45" stroke="${INK}" stroke-width="1.5"/>
+      <path d="M322,268 C316,276 316,290 326,296 C324,286 324,276 322,268Z" fill="#6b4b22"/>
+      <g id="gramNotes"></g></g>` : '';
+    gramRec = L.upFront.querySelector('#gramRec');
+    notes = [];
+  }
+  function upFrame(dt) {
+    if (!gramRec) return;
+    const t = st.t;
+    gramRec.setAttribute('transform', `translate(364,323) scale(1,.22) rotate(${(t * 200) % 360}) translate(-364,-323)`);
+    if (MD.Music && MD.Music.on && Math.random() < dt * 0.8 && notes.length < 4) {
+      const g = L.upFront.querySelector('#gramNotes');
+      const n = document.createElementNS(NS, 'text');
+      n.textContent = Math.random() < 0.5 ? '♪' : '♫'; n.setAttribute('class', 'svg-note');
+      g.appendChild(n); notes.push({ el: n, x: 322 + rnd(-6, 6), y: 272, life: 0 });
+    }
+    for (let i = notes.length - 1; i >= 0; i--) {
+      const q = notes[i]; q.life += dt; q.y -= dt * 18; q.x += Math.sin(t * 3 + i) * dt * 10;
+      q.el.setAttribute('x', q.x.toFixed(1)); q.el.setAttribute('y', q.y.toFixed(1)); q.el.setAttribute('opacity', Math.max(0, 1 - q.life / 2.2).toFixed(2));
+      if (q.life > 2.2) { q.el.remove(); notes.splice(i, 1); }
+    }
+  }
+
   function init(el) {
     svg = el; build(); setTime(540);
     MD.onFrame.push(frame);
+    MD.onFrame.push(upFrame);
   }
 
-  MD.Shop = { init, setTime, openDoor, closeDoor, setShelf, showItem, takeItem, cash, ringBell, get actors() { return L.actors; }, get ledger() { return L.ledger; } };
+  MD.Shop = { init, setUpgrades, setTime, openDoor, closeDoor, setShelf, showItem, takeItem, cash, ringBell, get actors() { return L.actors; }, get ledger() { return L.ledger; } };
 })();

@@ -41,52 +41,52 @@ MD.U = {
   const GOLD = '#d6aa4c', SILVER = '#c3c8cb', BRONZE = '#a0673a', BRASS = '#c49a45', COPPER = '#b8683b';
 
   const CATS = {
-    ring: { g: 'Mücevher', base: 60, art: 'ring', v: [
+    ring: { g: 'Mücevher', base: 90, art: 'ring', v: [
       { n: 'Yakut Mühür Yüzük', metal: GOLD, gem: '#b3202c' },
       { n: 'Zümrüt Yüzük', metal: GOLD, gem: '#1f8a55' },
       { n: 'Safir Yüzük', metal: SILVER, gem: '#2a4fb0' },
       { n: 'Akik Mühür Yüzük', metal: SILVER, gem: '#c0602a' },
       { n: 'Pırlanta Tektaş', metal: SILVER, gem: '#dff3f7' }] },
-    necklace: { g: 'Mücevher', base: 85, art: 'necklace', v: [
+    necklace: { g: 'Mücevher', base: 130, art: 'necklace', v: [
       { n: 'İnci Gerdanlık', metal: GOLD, gem: '#f3ecdf' },
       { n: 'Mercan Kolye', metal: GOLD, gem: '#c9493a' },
       { n: 'Firuze Kolye', metal: SILVER, gem: '#3fa7a0' }] },
-    watch: { g: 'Saat', base: 70, art: 'watch', v: [
+    watch: { g: 'Saat', base: 105, art: 'watch', v: [
       { n: 'Gümüş Cep Saati', metal: SILVER, gem: '#f4ecd8' },
       { n: 'Altın Cep Saati', metal: GOLD, gem: '#f4ecd8' },
       { n: 'Mineli Cep Saati', metal: GOLD, gem: '#dfe9f3' }] },
-    vase: { g: 'Porselen', base: 48, art: 'vase', v: [
+    vase: { g: 'Porselen', base: 70, art: 'vase', v: [
       { n: 'Kütahya Çini Vazo', metal: '#f1ead8', gem: '#2c5fa8' },
       { n: 'İznik Desenli Vazo', metal: '#f3eee2', gem: '#b33a2c' },
       { n: 'Çin Porseleni Vazo', metal: '#eef0ee', gem: '#24438f' },
       { n: 'Bohem Kristal Vazo', metal: '#cfe3e6', gem: '#7a3a8f' }] },
-    painting: { g: 'Tablo', base: 90, art: 'painting', v: [
+    painting: { g: 'Tablo', base: 135, art: 'painting', v: [
       { n: 'Boğaz Manzarası', metal: GOLD, gem: '#7fa6c4' },
       { n: 'Haliç\'te Gün Batımı', metal: GOLD, gem: '#e0925a' },
       { n: 'Galata Gecesi', metal: BRONZE, gem: '#3a4a6e' }] },
-    bust: { g: 'Heykel', base: 80, art: 'bust', v: [
+    bust: { g: 'Heykel', base: 120, art: 'bust', v: [
       { n: 'Bronz Büst', metal: BRONZE, gem: '#6b4524' },
       { n: 'Mermer Büst', metal: '#e4ded0', gem: '#b8b0a0' },
       { n: 'Alçı Büst', metal: '#efe8da', gem: '#c9bfae' }] },
-    pistol: { g: 'Silah', base: 75, art: 'pistol', v: [
+    pistol: { g: 'Silah', base: 110, art: 'pistol', v: [
       { n: 'Kakmalı Kubur Tabanca', metal: SILVER, gem: '#6b3d1f' },
       { n: 'Gümüş İşlemeli Tabanca', metal: SILVER, gem: '#3a2414' }] },
-    dagger: { g: 'Silah', base: 65, art: 'dagger', v: [
+    dagger: { g: 'Silah', base: 100, art: 'dagger', v: [
       { n: 'Gümüş Kınlı Hançer', metal: SILVER, gem: '#6b3d1f' },
       { n: 'Fildişi Saplı Hançer', metal: GOLD, gem: '#efe6cf' },
       { n: 'Mercan Saplı Hançer', metal: GOLD, gem: '#b8443a' }] },
-    book: { g: 'Kitap', base: 55, art: 'book', v: [
+    book: { g: 'Kitap', base: 80, art: 'book', v: [
       { n: 'Tezhipli Divan', metal: GOLD, gem: '#6b2a1c' },
       { n: 'El Yazması Tarih', metal: GOLD, gem: '#2c4a3a' },
       { n: 'Deri Ciltli Atlas', metal: BRASS, gem: '#3a2c1c' }] },
-    candle: { g: 'Aydınlatma', base: 42, art: 'candle', v: [
+    candle: { g: 'Aydınlatma', base: 65, art: 'candle', v: [
       { n: 'Gümüş Şamdan', metal: SILVER, gem: '#f3ead5' },
       { n: 'Pirinç Şamdan', metal: BRASS, gem: '#f3ead5' },
       { n: 'Bronz Şamdan', metal: BRONZE, gem: '#efe2c6' }] },
-    gramophone: { g: 'Mekanik', base: 100, art: 'gramophone', v: [
+    gramophone: { g: 'Mekanik', base: 150, art: 'gramophone', v: [
       { n: 'Borulu Gramofon', metal: BRASS, gem: '#5a3a22' },
       { n: 'Pathé Gramofon', metal: COPPER, gem: '#3a2414' }] },
-    coffee: { g: 'Mutfak', base: 32, art: 'coffee', v: [
+    coffee: { g: 'Mutfak', base: 50, art: 'coffee', v: [
       { n: 'Bakır Cezve Takımı', metal: COPPER, gem: '#f1ead8' },
       { n: 'Gümüş Zarflı Fincanlar', metal: SILVER, gem: '#f3eee2' }] },
   };
@@ -146,9 +146,9 @@ MD.U = {
   }
 
   const JOBS = [
-    { id: 'rihtim', loc: 'rihtim', t: 'Kaçak Tütün Yükü', d: 'Gece yarısı rıhtıma yanaşan mavnadan sandıkları indir. Gümrükçüler uyuyor, umarız.', key: ['kas'], diff: 3, slots: 2, cash: [170, 300], heat: 8, minDay: 1 },
-    { id: 'carsi', loc: 'carsi', t: 'Sahte Tapu Mührü', d: 'Çarşıdaki bir sarraf, eski bir tapunun mührünü kopyalatmak istiyor. Temiz iş, az kan.', key: ['akl'], diff: 3, slots: 1, cash: [140, 240], heat: 5, minDay: 1 },
-    { id: 'tahsilat', loc: 'kumar', t: 'Kumar Borcu Tahsilatı', d: 'Kumarhanenin arka odasında borcunu unutan bir kalantor var. Hatırlatmak gerek.', key: ['kas'], diff: 4, slots: 1, cash: [190, 280], heat: 7, minDay: 2 },
+    { id: 'rihtim', loc: 'rihtim', t: 'Kaçak Tütün Yükü', d: 'Gece yarısı rıhtıma yanaşan mavnadan sandıkları indir. Gümrükçüler uyuyor, umarız.', key: ['kas'], diff: 3, slots: 2, cash: [120, 220], heat: 8, minDay: 1 },
+    { id: 'carsi', loc: 'carsi', t: 'Sahte Tapu Mührü', d: 'Çarşıdaki bir sarraf, eski bir tapunun mührünü kopyalatmak istiyor. Temiz iş, az kan.', key: ['akl'], diff: 3, slots: 1, cash: [100, 180], heat: 5, minDay: 1 },
+    { id: 'tahsilat', loc: 'kumar', t: 'Kumar Borcu Tahsilatı', d: 'Kumarhanenin arka odasında borcunu unutan bir kalantor var. Hatırlatmak gerek.', key: ['kas'], diff: 4, slots: 1, cash: [130, 210], heat: 7, minDay: 2 },
     { id: 'konak', loc: 'konak', t: 'Paşa Konağı', d: 'Emekli paşa Yalova kaplıcasında. Kasasındaki mücevherler sahipsiz kaldı sayılır.', key: ['sin'], diff: 5, slots: 2, item: { rar: [2, 3], cats: ['ring', 'necklace', 'watch'] }, heat: 15, minDay: 2 },
     { id: 'gumruk', loc: 'gumruk', t: 'Mühürlü Sandıklar', d: 'Gümrük deposunda sahibi çıkmayan iki sandık var. İçinde ne olduğunu kimse bilmiyor.', key: ['kas', 'sin'], diff: 7, slots: 2, items: 2, rar: [1, 2], heat: 12, minDay: 3 },
     { id: 'muze', loc: 'muze', t: 'Müzeden Emanet', d: 'Bekçi Hasan her gece ikide uyuklar. Vitrindeki eser bir koleksiyoncuyu bekliyor.', key: ['sin', 'akl'], diff: 9, slots: 2, item: { rar: [3, 3] }, heat: 22, minDay: 5 },
