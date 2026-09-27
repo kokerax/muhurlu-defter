@@ -1,7 +1,7 @@
 /* Oyun analitiği (GA4). Ölçüm kimliği boşken hiçbir şey yüklenmez ve olaylar sessizce düşer.
    Reklam/kişiselleştirme sinyalleri kapalı; yalnız oyun olayları gönderilir. */
 (function () {
-  const GA_ID = '';   // örn. 'G-ABC123XYZ'
+  const GA_ID = 'G-R7JWEZZKLR';
   const on = GA_ID && !/localhost|127\.0\.0\.1/.test(location.hostname);
   window.dataLayer = window.dataLayer || [];
   function gtag() { dataLayer.push(arguments); }
