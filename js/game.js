@@ -236,6 +236,7 @@
   async function inspect(it, t) {
     MD.Audio.play('scan');
     const min = await MD.Bench.run(t, it, E.inspectMin(G));
+    MD.track('inspect', { tool: t, minutes: min });
     await tick(min);
     it.k[t] = true;
     let txt = '', cls = '';
@@ -415,6 +416,7 @@
     it.paid = price; it.day = G.day;
     G.inv.push(it); G.stats.bought++;
     logDeal('Alış', it, price, null);
+    MD.track('item_buy', { category: it.cat, rarity: it.r, price, fake: !!it.fake, seller_type: c.type });
     stamp('ALINDI', 'ink');
     MD.Shop.cash(price, false);
     await tick(5);
@@ -430,6 +432,7 @@
     G.inv = G.inv.filter(x => x.id !== it.id);
     G.stats.sold++; G.stats.profit += pl; G.stats.best = Math.max(G.stats.best, pl);
     logDeal('Satış', it, price, pl);
+    MD.track('item_sell', { category: it.cat, rarity: it.r, price, profit: pl, buyer_type: c.type, order: !!c.orderId });
     if (c.orderId) { G.orders = G.orders.filter(o => o.id !== c.orderId); E.addRep(G, 3); floatText('Sipariş teslim · İtibar +3', 'pos', 'hud'); }
     stamp((pl >= 0 ? 'KÂR +' : 'ZARAR −') + fmt(Math.abs(pl)), pl >= 0 ? 'pos' : 'neg');
     setTimeout(() => floatText((pl >= 0 ? 'Kâr +' : 'Zarar −') + fmt(Math.abs(pl)) + ' L', pl >= 0 ? 'pos big' : 'neg big', 'stage'), 250);
@@ -637,6 +640,7 @@
     const a = await waitAct();
     if (a === 'pay') {
       addCash(-due.amt); G.paidN++;
+      MD.track('installment_paid', { n: G.paidN });
       MD.Audio.play('stamp'); MD.haptic('heavy');
       panel(`<div class="seal-wrap"><div class="seal">ÖDENDİ</div><p>${G.paidN}. taksit kapandı.</p></div>`, 'idle');
       c.actor.setEmotion('happy'); c.actor.nod();
@@ -838,6 +842,7 @@
         const k = v.slice(2), cost = E.upgCost(G, k);
         if (cost != null && G.cash >= cost) {
           addCash(-cost); G.upg[k] = E.upg(G, k) + 1;
+          MD.track('upgrade', { item: k, level: G.upg[k], cost });
           if (k === 'tabela') { E.addRep(G, 12); }
           G.dayLog.push({ k: 'Geliştirme', n: E.UPG[k].n, p: cost, pl: null, t: hhmm(G.time) });
           applyUpgrades(); hud(); MD.Audio.play('coin'); save();
@@ -852,6 +857,7 @@
     panel(`<div class="idle-wrap"><div class="idle-clock">Cumartesi</div><p>Kapalıçarşı'da haftalık mezat başlıyor.</p></div>`, 'idle');
     const won = await MD.Auction.run({ cash: G.cash, lots: E.auctionLots(G), vo: k => MD.VO.play('mezatci', k) });
     MD.Music.scene('shop');
+    MD.track('auction', { won: won.length, spent: won.reduce((s, w) => s + w.price, 0) });
     for (const w of won) {
       w.item.paid = w.price; w.item.day = G.day;
       G.inv.push(w.item); addCash(-w.price); G.stats.bought++;
@@ -905,6 +911,7 @@
     await endDay();
   }
   async function endDay() {
+    MD.track('day_end', { deals: G.dayLog.length, profit: G.dayLog.filter(r => r.pl != null).reduce((s, r) => s + r.pl, 0) });
     panel(`<div class="idle-wrap"><div class="idle-clock">Kapandı</div><p>Kepenkler iniyor.</p></div>`, 'idle');
     MD.Shop.setTime(Math.max(G.time, CLOSE));
     const due = DUE[G.paidN];
@@ -1271,6 +1278,7 @@
   /* ---------- son ---------- */
   async function arrested() { await gameOver('Tutuklandın', 'Polis dikkati sınırı aştı. Komiser Cevdet kapıya dayandı ve defteri mühürledi.'); }
   async function gameOver(title, text) {
+    MD.track('game_over', { reason: title });
     G.over = title; clearSave();
     running = false;
     await openSheet(`<div class="end"><div class="seal red">${title.toUpperCase()}</div><p>${text}</p>
@@ -1287,6 +1295,7 @@
   async function victory(kind, saved) {
     kind = kind || (G.shadow >= 40 ? 'golge' : 'normal');
     const [title, text] = ENDINGS[kind];
+    MD.track('game_win', { ending: kind });
     const v = await openSheet(`<div class="end"><div class="seal ${kind === 'baba' || kind === 'golge' ? 'red' : ''}">${title}</div>
       <p>${text}</p>${saved ? `<p class="muted">Silinen borç: ${money(saved)}</p>` : ''}<p class="muted">${G.day}. gün · İtibar ${Math.round(G.rep)}</p>
       <div class="totals"><div><span>Kasa</span><b>${money(G.cash)}</b></div><div><span>Alınan / satılan</span><b>${G.stats.bought} / ${G.stats.sold}</b></div><div><span>Toplam kâr</span><b>${fmt(G.stats.profit)} L</b></div><div><span>Gece işleri</span><b>${G.stats.jobs}</b></div></div>
@@ -1310,6 +1319,7 @@
       t.classList.add('out');
       setTimeout(() => { t.hidden = true; a.remove(); }, 500);
       if (fresh) { clearSave(); newGame(); } else { G = has; }
+      MD.track(fresh ? 'game_start' : 'game_continue');
       hud();
       if (G.phase === 'night') { MD.Shop.setTime(CLOSE); MD.Shop.setShelf(G.inv); goNight(); }
       else dayLoop();
