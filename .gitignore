@@ -1,2 +1,3 @@
 .DS_Store
 vo/_tmp/
+vo/**/.*.el4

@@ -2,7 +2,8 @@
    Reklam/kişiselleştirme sinyalleri kapalı; yalnız oyun olayları gönderilir. */
 (function () {
   const GA_ID = 'G-R7JWEZZKLR';
-  const on = GA_ID && !/localhost|127\.0\.0\.1/.test(location.hostname);
+  const inApp = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.save);
+  const on = GA_ID && !inApp && !/localhost|127\.0\.0\.1/.test(location.hostname);
   window.dataLayer = window.dataLayer || [];
   function gtag() { dataLayer.push(arguments); }
   if (on) {
